@@ -24,6 +24,11 @@ class LoginRequest(BaseModel):
     sifre: str
 
 
+class RegisterRequest(BaseModel):
+    kullanici_adi: str = Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9_.-]+$")
+    sifre: str = Field(min_length=8, max_length=128)
+
+
 class LoginResponse(BaseModel):
     erisim_token: str
     token_tipi: str = "bearer"

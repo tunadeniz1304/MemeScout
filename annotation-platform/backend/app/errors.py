@@ -1,9 +1,11 @@
+from typing import Optional
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
 
 class ApiHatasi(Exception):
-    def __init__(self, status_kodu: int, kod: str, mesaj: str, detay: dict | None = None):
+    def __init__(self, status_kodu: int, kod: str, mesaj: str, detay: Optional[dict] = None):
         self.status_kodu = status_kodu
         self.kod = kod
         self.mesaj = mesaj

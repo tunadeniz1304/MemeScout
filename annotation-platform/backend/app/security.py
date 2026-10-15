@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 import jwt
 from fastapi import Depends
@@ -33,7 +34,7 @@ def token_olustur(kullanici_id: str) -> str:
 
 
 def aktif_kullanici(
-    kimlik: HTTPAuthorizationCredentials | None = Depends(bearer),
+    kimlik: Optional[HTTPAuthorizationCredentials] = Depends(bearer),
     session: Session = Depends(get_session),
 ) -> User:
     if kimlik is None:

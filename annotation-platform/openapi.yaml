@@ -48,6 +48,24 @@ tags:
 
 paths:
   # ---------------------------------------------------------------- auth
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Üye ol
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Hesap oluşturuldu ve oturum açıldı
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
   /auth/login:
     post:
       tags: [auth]
@@ -1053,6 +1071,17 @@ components:
       properties:
         kullanici_adi: { type: string }
         sifre: { type: string, format: password }
+
+    RegisterRequest:
+      type: object
+      required: [kullanici_adi, sifre]
+      properties:
+        kullanici_adi:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: '^[A-Za-z0-9_.-]+$'
+        sifre: { type: string, minLength: 8, maxLength: 128, format: password }
 
     LoginResponse:
       type: object
