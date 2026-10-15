@@ -1,205 +1,213 @@
-# MemeScout — Annotation Platformu
+# MemeScout — Annotation Platformu ve Veri Şartnamesi
 
-> Durum: Taslak. İçerik şemasının anlamı için [architecture.md](architecture.md) dokümanına bakın. Bu doküman platformun hangi verileri tutacağını, etiketleme sürecini ve platformdan beklenen özellikleri tanımlar.
+> **Durum:** Güncellendi (ADR-0001 — ADR-0008, Çoklu Vektör ve Tekil Annotator Entegrasyonu)  
+> **İlgili Dokümanlar:** [architecture.md](http://architecture.md), [openapi.yaml](../openapi.yaml), [docs/annotation\_design.txt](http://annotation_design.txt)
 
-## 1. Amaç ve Kapsam
+---
 
-- ~300 meme, 4 kişilik ekip tarafından elle etiketlenecek.
-- Platformun çıktısı iki şeydir:
-  1. Her meme için tek, kesinleşmiş bir kayıt (**gold**). Arama sistemi bunu kullanır.
-  2. Her etiketleyicinin ham etiketleri. Etiketleyiciler arası uyum analizi bunlarla yapılır.
-- Değerlendirmede kullanılacak test sorguları da bu platformda yazılır ve takip edilir.
+## 1\. Amaç ve Kapsam
 
-## 2. Roller
+* **Veri Hacmi:** \~300–500 yerli/uluslararası meme şablonu ve animasyonlu GIF.  
+* **Etiketleme Modeli (Tekil Annotator \+ Çapraz Denetim):** Çoklu etiketleyicilerin yaratacağı üslup uyuşmazlığını ve veri kirliliğini önlemek adına tüm veri kümesi **tek bir birincil annotator** tarafından tutarlı bir dil ve standartla etiketlenir. Ekibin diğer 3 üyesi izleyici, denetçi ve test sorgusu yazarı olarak görev yapar.  
+* **Çoklu Vektör İllüzyonu (Zero-LLM Runtime):** Arama anında yüksek gecikme (latency) ve maliyet yaratan generative LLM'ler her sorguda çalıştırılmaz. Dilin mizahi boyutu; zenginleştirilmiş soyut durum tanımları, pozitif/negatif senaryolar, sokak dili/slang enjeksiyonu ve Türkçe dense embedding (`bge-m3`, `ytu-ce-cosmos`) modellerinin latent uzay yakınsamasıyla çözülür.  
+* **Platform Çıktıları:**  
+  1. `gold.jsonl`: Çift vektörlü (`V_visual`, `V_context`) arama motoruna doğrudan beslenen kesinleşmiş kayıtlar.  
+  2. `annotations_raw.jsonl`: Denetim izleri, revizyonlar ve annotator süreç telemetrisi.  
+  3. `test_set.jsonl`: Sızıntı kurallarına tam uyumlu bağımsız doğrulama seti.
 
-| Rol | Yetki |
-| --- | --- |
-| **Annotator** | Kendisine atanan meme'leri etiketler, yorum ve işaret bırakır |
-| **Reviewer** | Çift etiketlenen meme'lerde anlaşmazlıkları çözer, gold kaydı onaylar |
-| **Admin** | Meme yükler, atama yapar, etiket listelerini yönetir, dışa aktarım alır |
+---
 
-4 kişilik ekipte herkes annotator'dır. Reviewer rolü dönüşümlü verilir: bir meme'in reviewer'ı, o meme'i etiketleyen iki kişiden biri olamaz.
+## 2\. Roller ve Yetki Matrisi
 
-## 3. Veri Modeli
+| Rol | Kullanıcılar | Yetkiler | Kısıtlar |
+| :---- | :---- | :---- | :---- |
+| **Annotator** | Tek Kişi (1) | Meme'leri hem fiziksel hem bağlamsal boyutlarıyla etiketler, taslak kaydeder, teslim eder. | Başka etiketleyicilerle çakışma yaşamaz; tekil sorumludur. |
+| **Reviewer / Viewer** | Ekip Üyeleri (3) | Etiketleri görüntüler, yorum/işaret (`/comments`) bırakır, revizyon talep eder. | Alan verilerini doğrudan ezemez; test sorgusu yazarıdır. |
+| **Admin** | Sistem / Yükleyici | Meme/GIF yükler, etiket listelerini günceller, `gold.jsonl` dışa aktarımı alır. | — |
 
-```
-Meme 1───* Annotation *───1 Kullanıcı
- │            │
- │            └── versiyonlar (revizyon geçmişi)
- ├──1 GoldKayıt
- ├──* Yorum / İşaret
- └──* TestSorgusu (doğru cevap olarak)
+---
 
-EtiketListesi (versiyonlu)
-DenetimKaydı (kim, ne zaman, neyi değiştirdi)
-```
+## 3\. Veri Modeli
 
-### 3.1 Meme (görsel bilgisi)
+Meme (1) ───\< (1) Annotation (Tekil Annotator) ─── (1) Kullanıcı
 
-Bu alanların hepsini platform yükleme sırasında otomatik doldurur. Kullanıcı sadece görseli seçer, başka bir şey girmez.
+ │                     │
 
-| Alan | Tip | Nasıl dolar |
-| --- | --- | --- |
-| `id` | string | Otomatik üretilir (dosya adından ya da sıra numarasından) |
-| `gorsel_yolu` | string | Dosyanın depolamaya kaydedildiği yol |
-| `sha256` | string | Dosyadan hesaplanır. Aynı dosyanın iki kez yüklenmesini engeller |
-| `yukleyen` | kullanıcı | Giriş yapmış kullanıcı |
-| `yuklenme_zamani` | zaman damgası | Yükleme anı |
+ │                     └── versiyonlar (İyimser Kilitleme / surum)
 
-Elimizdeki mevcut ~300 meme platforma toplu olarak aktarılır. Bu aktarımda da alanlar aynı şekilde otomatik dolar. `yukleyen` alanına aktarımı başlatan kişi yazılır.
+ ├── (1) GoldKayıt
 
-Meme'i kimlerin etiketlediği `Annotation` kayıtlarında tutulur (§3.3). Meme listesinde her meme'in yanında annotator'ları bu kayıtlardan türetilerek gösterilir.
+ ├── (\*) Yorum / İşaret (Ekip İçi Tartışma & Hata Bildirimi)
 
-### 3.2 Annotation (içerik etiketleri)
+ └── (\*) TestSorgusu (Sızıntı Korumalı Doğrulama Seti)
 
-Her meme–annotator çifti için ayrı bir kayıt tutulur. Alanların anlamı [architecture.md §3](architecture.md#3-annotation-şeması) bölümündedir. Platformun uygulayacağı doğrulama kuralları:
+### 3.1 Meme (Görsel ve Dosya Bilgisi)
 
-| Alan | Tip | Zorunlu | Doğrulama |
-| --- | --- | --- | --- |
-| `tur` | enum | ✓ | `template` veya `hazir_meme` |
-| `ad` | string | ✓ | |
-| `kaynak` | string | | Eser, karakter, sahne |
-| `durum` | metin | ✓ | En az 20 karakter. Somut varlık değil, soyut iskelet |
-| `ornek_durumlar` | metin listesi | ✓ | 3–5 adet, birbirinin tekrarı olmamalı |
-| `uygun_olmayan_durumlar` | metin listesi | ✓ | 1–2 adet |
-| `kulturel_bilgi` | metin | ✓ | Gereken arka plan ve neden komik olduğu |
-| `duygu` | etiket listesi | ✓ | 1–3 etiket, sabit listeden |
-| `niyet` | etiket listesi | ✓ | 1–3 etiket, sabit listeden |
-| `mekanizma` | etiket listesi | ✓ | 1–3 etiket, sabit listeden |
-| `uyari` | etiket listesi | | Boş olabilir. Boş bırakmak bilinçli bir seçimdir ("uyarı yok" onayı) |
-| `notlar` | metin | | Serbest not |
-
-### 3.3 Annotation (süreç bilgisi)
-
-İçerik etiketleriyle birlikte otomatik ya da yarı otomatik tutulur.
+Platform yükleme anında otomatik hesaplar; kullanıcı yalnızca görseli yükler:
 
 | Alan | Tip | Açıklama |
-| --- | --- | --- |
-| `annotator` | kullanıcı | Etiketleyen kişi |
-| `durum_kodu` | enum | Bkz. §4.2 |
-| `atanma_zamani`, `baslama_zamani`, `gonderme_zamani` | zaman damgası | |
-| `harcanan_sure_sn` | int | Aktif süre. Emek tahmini ve rapor için |
-| `tanidiklik` | 1–5 | 1: hiç görmedim, 2: gördüm ama ne anlattığını bilmiyorum, 3: anlamını biliyorum ama kullanmam, 4: biliyorum ve ara sıra kullanırım, 5: çok iyi biliyorum, kaynağını ve kullanımlarını tanıyorum |
-| `alan_guveni` | alan → 1–3 | Annotator'ın emin olmadığı alanları işaretlemesi için |
-| `atlandi` | bool + gerekçe | "Bu meme'i tanımıyorum" ya da "uygun değil" gibi |
-| `sema_versiyonu` | string | Hangi şema versiyonuyla etiketlendi |
-| `etiket_listesi_versiyonu` | string | Hangi etiket listesi versiyonuyla etiketlendi |
-| `cift_etiket` | bool | Uyum ölçümü için çift etiketlenen alt kümede mi |
+| :---- | :---- | :---- |
+| `id` | `string` | Benzersiz kimlik (dosya adı veya slug formatında) |
+| `gorsel_yolu` | `string` | Dosyanın sunucu dosya sistemindeki konumu (`memes/...`) |
+| `medya_tipi` | `enum` | `image` veya `gif` |
+| `sha256` | `string` | Mükerrer dosya yüklemelerini önleyen dosya karması |
+| `yukleyen` | `kullanici` | Aktarımı başlatan kullanıcı hesabı |
+| `yuklenme_zamani` | `datetime` | UTC zaman damgası |
 
-`tanidiklik` ve `alan_guveni` önemli: Kültürel bağlamı bilmeyen birinin etiketi, bilen birininkiyle aynı ağırlıkta olmamalı. Tanıdıklık skoru 1 veya 2 olan meme başka birine yeniden atanır.
+---
 
-### 3.4 Gold kayıt
+### 3.2 Annotation (İçerik Şeması — Çoklu Vektör ve Alan Ağırlıklandırma)
 
-Her meme için bir tane. Arama sisteminin kullandığı kayıt budur.
+Arama anında görsel tarif aramaları ile durumsal reaksiyon aramalarını tam isabetle ayrıştırmak için alanlar fiziksel ve bağlamsal olarak yapılandırılmıştır:
 
-| Alan | Açıklama |
-| --- | --- |
-| İçerik alanları | §3.2 ile aynı yapı |
-| `kaynak_annotationlar` | Gold kaydın hangi annotation'lardan türetildiği |
-| `reviewer` | Onaylayan kişi (çift etiketli meme'lerde) |
-| `cozum_notu` | Anlaşmazlık nasıl çözüldü |
-| `onay_zamani` | |
+| Alan Adı | Tip | Zorunlu | Karakter / Adet Sınırı | Hedef Vektör / Amaç | Doğrulama & Format Kuralı |
+| :---- | :---- | :---: | :---: | :---- | :---- |
+| `tur` | `enum` | ✓ | — | Filtreleme | `template` veya `hazir_meme` |
+| `ad` | `string` | ✓ | Min 3, Max 60 | Keyword / Sparse | Meme'in yaygın bilinen Türkçe adı |
+| `kaynak` | `string` | — | Max 100 | Keyword / Sparse | Eser, film, dizi, sahne veya köken |
+| `gorsel_tanim` | `metin` | ✓ | **Min 20, Max 120** | **`V_visual`** | **Yalnızca kameranın gördüğü somut nesneler/varlıklar.** Duygu ve soyut yorum YAZILMAZ. |
+| `durum` | `metin` | ✓ | **Min 30, Max 150** | **`V_context` (Çekirdek)** | Yüzeydeki nesnelerden arındırılmış soyut duygu ve tepki iskeleti. |
+| `ornek_durumlar` | `liste` | ✓ | **3–5 adet** | **`V_context` (Pozitif)** | Meme'in tam karşılık geldiği somut hayat senaryoları. |
+| `uygun_olmayan_durumlar` | `liste` | ✓ | **1–2 adet** | **`V_negative` (Ceza)** | Meme'in asla atılmaması gereken durumlar (Negatif ceza puanı). |
+| `es_anlam_ve_slang` | `liste` | ✓ | **3–8 kelime** | **`V_context` (Manipülasyon)** | Sokak dili, argo, deyimler (`["bıkmak", "patlamak", "vizeler"]`). |
+| `kulturel_bilgi` | `metin` | ✓ | Min 30, Max 250 | Reranker / Explain | Neden komik olduğu ve yerli kültürdeki karşılığı. |
+| `duygu` | `liste` | ✓ | 1–3 etiket | Filtre / Boost | Sabit listeden (ADR-0008 snake\_case: `bikkinlik`, `suphe` vb.) |
+| `niyet` | `liste` | ✓ | 1–3 etiket | Filtre / Boost | Sabit listeden (`sikayet_isyan`, `alay_etme`, `kabullenme` vb.) |
+| `mekanizma` | `liste` | ✓ | 1–3 etiket | Filtre / Boost | Sabit listeden (`ironi`, `abarti`, `beklenti_gerceklik_zitligi` vb.) |
+| `uyari` | `liste` | ✓ | ADR-0004 | Güvenlik Etiketi | `null` (gönderilemez), `[]` (uyarı yok), `["politik", "kaba_argo", "hassas"]` |
+| `notlar` | `metin` | — | Max 300 | İç Takip | Annotator serbest not alanı |
 
-Tek etiketlenen meme'lerde gold kayıt doğrudan o annotation'dan oluşur.
+---
 
-### 3.5 Yorum ve işaret
+### 3.3 Arama Motoru Puanlama Formülü (Ceza Destekli Hibrit Arama)
 
-Annotator'ların ekipçe tartışmak istediği durumlar için. Örnek: "Bu meme politik mi sayılır?", "Bu iki meme aynı template mi?"
+Metinler vektör motoruna 3 farklı bileşen olarak sunulur:
 
-| Alan | Açıklama |
-| --- | --- |
-| `meme`, `alan` | Hangi meme, hangi alan (opsiyonel) |
-| `yazan`, `zaman`, `metin` | |
-| `tur` | soru, kılavuza ekleme önerisi, kopya şüphesi, hata |
-| `cozuldu` | bool |
+* `TEXT_FOR_V_VISUAL` \= `gorsel_tanim`  
+* `TEXT_FOR_V_CONTEXT` \= `durum` \+ `ornek_durumlar` \+ `es_anlam_ve_slang`  
+* `TEXT_FOR_V_NEGATIVE` \= `uygun_olmayan_durumlar`
 
-### 3.6 Etiket listesi
+Kullanıcı sorgusu \$q\$ için kosinüs yakınlıkları üzerinden nihai alaka skoru hesaplanır:
 
-Duygu, niyet, mekanizma ve uyarı listeleri platformda **versiyonlu** tutulur.
+\$\$\\text{Final\_Score} \= (W\_{visual} \\cdot S\_{visual}) \+ (W\_{context} \\cdot S\_{context}) \- (\\lambda \\cdot P\_{negative})\$\$
 
-| Alan | Açıklama |
-| --- | --- |
-| `alan` | duygu, niyet, mekanizma, uyari |
-| `etiket` | ör. `bikkinlik` |
-| `gorunen_ad` | ör. "Bıkkınlık" |
-| `tanim` | Kılavuzdaki kısa tanım |
-| `ornekler` | 1–2 örnek meme |
-| `versiyon`, `eklenme_tarihi`, `aktif` | |
+* **Tarif Modu:** \$W\_{visual} \= 0.70\$, \$W\_{context} \= 0.30\$  
+* **Durum Modu:** \$W\_{visual} \= 0.20\$, \$W\_{context} \= 0.80\$  
+* **Ceza Katsayısı:** \$\\lambda \\approx 0.25\$
 
-Bir etiket eklendiğinde ya da çıkarıldığında, eski versiyonla etiketlenmiş kayıtlar "yeniden kontrol" listesine düşer.
+---
 
-### 3.7 Test sorgusu
+### 3.4 Annotation Süreç Bilgisi ve İyimser Kilitleme
 
-Değerlendirme seti (~100 sorgu) de platformda tutulur.
+| Alan | Tip | Açıklama |
+| :---- | :---- | :---- |
+| `annotator` | `kullanici` | Etiketleyen birincil kullanıcı |
+| `durum_kodu` | `enum` | Yaşam döngüsü statüsü (§4.2) |
+| `surum` | `int` | **İyimser Kilitleme (ADR-0005):** Taslakta artar, çakışmada `409` döner. |
+| `revizyon_notu` | `metin` | Denetçilerin bıraktığı düzeltme talimatı |
+| `tanidiklik` | `1–5` | 1–2 puan alan meme başka bağlama aktarılır veya tartışmaya açılır. |
+| `harcanan_sure_sn` | `int` | Sayfa etkileşimdeyken ölçülen aktif süre |
 
-| Alan | Açıklama |
-| --- | --- |
-| `id`, `metin` | Durum ya da konuşma metni |
-| `mod` | `durum` veya `tarif` |
-| `dogru_memeler` | Bir veya birden fazla meme |
-| `yazan` | Sorguyu yazan kişi |
-| `zaman` | |
+---
 
-**Sızıntı kuralı:** Bir kişi, `ornek_durumlar` alanını kendisinin yazdığı meme'leri doğru cevap olarak gösteren test sorgusu yazamaz. Platform bunu `yazan` ve `annotator` alanlarını karşılaştırarak engeller.
+### 3.5 Test Sorgusu ve Sızıntı (Leakage) Koruması (ADR-0002)
 
-### 3.8 Denetim kaydı
+| Alan | Tip | Açıklama |
+| :---- | :---- | :---- |
+| `id`, `metin` | `string` | Kullanıcı konuşması veya meme tarifi |
+| `mod` | `enum` | `durum` veya `tarif` |
+| `dogru_memeler` | `liste` | Eşleşmesi gereken doğru meme kimlikleri (`id`) |
+| `yazan` | `kullanici` | Sorguyu oluşturan ekip üyesi |
 
-Her değişiklik için: kim, ne zaman, hangi kayıt, hangi alan, eski değer, yeni değer. Revizyon geçmişi ve "kim neyi değiştirdi" soruları bununla cevaplanır.
+> **Katı Sızıntı Kuralı:** Test setindeki \~100 sorguyu **yalnızca annotator olmayan diğer 3 ekip üyesi yazar**. Annotator'ın kendi yazdığı `ornek_durumlar` üzerinden test sorgusu oluşturması sistem seviyesinde engellenir (`422 SIZINTI`).
 
-## 4. Etiketleme Süreci
+---
+
+## 4\. Etiketleme Yaşam Döngüsü ve İş Akışı
 
 ### 4.1 Aşamalar
 
-1. **Kılavuz:** Etiket tanımları ve örneklerle etiketleme kılavuzu yazılır.
-2. **Kalibrasyon turu:** 4 kişinin hepsi aynı 10–15 meme'i etiketler. Sonuçlar birlikte tartışılır ve kılavuz güncellenir. Bu turun etiketleri uyum ölçümüne katılmaz.
-3. **Ana etiketleme:** 300 meme 4 kişiye bölünür, kişi başı ~75 meme.
-4. **Çift etiketleme:** Meme'lerin ~%20'si (~60 meme) ikinci bir kişiye de atanır. 4 kişiden 6 farklı ikili çıkar, her ikiliye ~10 meme düşer. Böylece uyum, kişiden bağımsız ölçülür.
-5. **Uyum ölçümü ve çözüm:** Anlaşmazlıkları üçüncü bir kişi (reviewer) çözer.
-6. **Test seti:** Sızıntı kuralına uyularak ~100 test sorgusu yazılır.
-7. **Dışa aktarım:** Gold kayıtlar arama sistemine aktarılır.
+1. **Ön Hazırlık:** ADR-0008 standartlarındaki sabit etiket listeleri sisteme tanımlanır.  
+2. **Tek Elden Giriş:** Birincil annotator tüm görselleri sırayla açar; görsel tarifi ve durum iskeletini bağımsız bloklar halinde doldurur.  
+3. **Akıllı Enjeksiyon:** Gerçekçi kullanım senaryoları (`ornek_durumlar`), ceza senaryoları (`uygun_olmayan_durumlar`) ve sokak argosu eklenir.  
+4. **Ekip Denetimi:** Diğer 3 üye etiketleri inceler; kültürel veya mantıksal bir eksiklik görürse yorum bırakır veya revizyon ister.  
+5. **Dışa Aktarım:** Onaylanan kayıtlar doğrudan `gold.jsonl` olarak derlenir ve çift vektörlü arama indeksine aktarılır.
 
-### 4.2 Annotation durumları
+### 4.2 Durum Geçişleri
 
-```
-atanmadi → atandi → devam_ediyor → gonderildi ─┬─► onaylandi
-                         ▲                     │
-                         └── revizyon_gerekli ◄┘
-                    atlandi (tanımıyorum / uygun değil)
-```
+atanmadi ──► atandi ──► devam\_ediyor ──► gonderildi ──┬──► onaylandi (gold)
 
-### 4.3 Kör etiketleme
+                             ▲                        │
 
-Çift etiketlenen meme'lerde iki kişi de göndermeden önce birbirinin etiketini göremez. Aksi halde ikinci kişi ilkinden etkilenir ve uyum olduğundan yüksek çıkar.
+                             └─── revizyon\_gerekli ◄──┘
 
-## 5. Platformdan Beklenen Özellikler
+| Endpoint | Geçiş | Açıklama |
+| :---- | :---- | :---- |
+| `POST /annotations/{id}/start` | `atandi → devam_ediyor` | Etiketleme işlemi başlar |
+| `POST /annotations/{id}/submit` | `devam_ediyor → gonderildi` | Form doğrulanır ve teslim edilir |
+| `POST /annotations/{id}/request-revision` | `gonderildi → revizyon_gerekli` | Denetçi düzeltme talep eder |
+| `POST /reviews/{meme_id}/gold` | `gonderildi → onaylandi` | Kayıt kesinleşir ve gold olur |
 
-**Etiketleme ekranı**
-- Görsel büyük ve yakınlaştırılabilir, form yanında
-- Etiket seçicilerinde her etiketin üzerine gelince kılavuzdaki tanımı göster
-- Otomatik taslak kaydı (sayfa kapanırsa iş kaybolmasın)
-- "Tanımıyorum / atla" butonu
-- Alan bazında "emin değilim" işareti
-- Klavye kısayolları (sonraki meme, kaydet, gönder)
-- Doğrulama kuralları ihlal edilirse gönderme engellenir ve sebebi gösterilir
+---
 
-**Yönetim ve takip**
-- İlerleme panosu: kişi başı tamamlanan, kalan, atlanan, ortalama süre
-- Uyum panosu: alan bazında uyum skorları ve en çok anlaşmazlık çıkan etiketler
-- Anlaşmazlık ekranı: iki annotation yan yana, reviewer seçer ya da birleştirir
-- Kopya uyarısı: yüklenen dosyanın `sha256` değeri mevcut bir meme'le aynıysa yüklemeyi engelle
+## 5\. Platform Kullanıcı Deneyimi (UI / UX) Kuralları
 
-**Dışa aktarım**
-- `gold.jsonl`: Meme başına bir satır gold kayıt, architecture.md şemasında
-- `annotations_raw.jsonl`: Tüm ham annotation'lar ve süreç bilgisi (uyum analizi için)
-- `test_set.jsonl`: Test sorguları
-- Dışa aktarımda annotator kimlikleri takma adla (`a1`–`a4`) yazılır
+* **Ayrılmış Çift Form Düzeni:** Form ekranında `Fiziksel Görsel Tarif` alanı ile `Kullanım Durumu & Slang` alanları belirgin renk bloklarıyla ayrılır; annotator'ın nesne ile soyut duyguyu karıştırması önlenir.  
+* **Canlı Doğrulama & Sayaçlar:** `Min` ve `Max` sınırları klavyeden yazıldığı anda kontrol edilir; sınır aşımında veya yetersiz karakterde uyarı belirir.  
+* **"Uyarı Yok" Onay Kutusu (ADR-0004):** Arayüzde uyarı etiketlerinin yanında bağımsız bir "Uyarı yok" checkbox'ı bulunur; işaretlenmeden `uyari: []` gönderilemez.  
+* **Kesintisiz Taslak:** Her 5 saniyede bir ve sekme kapanırken `PATCH /annotations/{id}/draft` çağrılır (`surum` çakışması korumalı).  
+* **Mükerrerlik Kalkanı:** Yeni bir görsel yüklendiğinde anlık SHA-256 taraması yapılır; kopya varsa yükleme engellenir.
 
-## 6. Uyum Ölçümü
+---
 
-| Alan türü | Metrik |
-| --- | --- |
-| Tek seçimli alanlar (`tur`) | Cohen's kappa |
-| Çok etiketli alanlar (`duygu`, `niyet`, `mekanizma`, `uyari`) | Krippendorff's alpha (MASI mesafesiyle) veya etiket bazında kappa |
-| Serbest metin (`durum`, `kulturel_bilgi`) | Sayısal ölçüm yerine reviewer'ın "aynı anlamı taşıyor mu" değerlendirmesi |
+## 6\. Dışa Aktarım Formatı (`gold.jsonl`)
 
-Bir etikette uyum düşük çıkarsa (kabaca kappa < 0,4), o etiketin tanımı kılavuzda netleştirilir ya da etiket başka bir etiketle birleştirilir.
+Arama motorunun doğrudan okuduğu satır bazlı JSON yapısı:
+
+{
+
+  "id": "kemal\_sunal\_hayirdir",
+
+  "tur": "template",
+
+  "ad": "Hayırdır İnşallah",
+
+  "kaynak": "Kemal Sunal",
+
+  "gorsel\_tanim": "Kemal Sunal'ın gözlerini kısarak şüpheyle ve hafif tebessümle ileriye baktığı yakın plan sahne.",
+
+  "durum": "Beklenmedik veya şüpheli bir teklif karşısında duyulan temkinli şaşkınlık ve güvensizlik.",
+
+  "ornek\_durumlar": \[
+
+    "Patron cuma 17:55'te 'müsaitsen odama gelir misin' yazdığında",
+
+    "Yıllardır aramayan birinin 'kanka çok acil baksana' demesi"
+
+  \],
+
+  "uygun\_olmayan\_durumlar": \[
+
+    "Gerçek ve trajik bir kaza haberi alındığında"
+
+  \],
+
+  "es\_anlam\_ve\_slang": \["hayırdır", "işkillenmek", "ayak yapmak", "dolap dönüyor"\],
+
+  "kulturel\_bilgi": "Türk sinemasında kurnazlığa karşı uyanık olma refleksini temsil eden kült sahne.",
+
+  "duygu": \["suphe", "saskinlik"\],
+
+  "niyet": \["tepki\_gosterme", "gecistirme"\],
+
+  "mekanizma": \["ironi", "beklenti\_gerceklik\_zitligi"\],
+
+  "uyari": \[\],
+
+  "annotator": \["a1"\],
+
+  "reviewer": "a2",
+
+  "sema\_versiyonu": "v2.0.0"
+
+}
