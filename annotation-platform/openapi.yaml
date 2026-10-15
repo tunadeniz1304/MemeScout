@@ -1,0 +1,1846 @@
+openapi: 3.0.3
+info:
+  title: MemeScout Annotation Platform API
+  version: 0.1.0
+  description: |
+    Etiketleme platformu frontend'inin backend'den beklediği API.
+    Alanların anlamı için architecture.md §3, süreç kuralları için annotation.md'ye bakın.
+
+    Genel kurallar
+    - Tüm istek/yanıt gövdeleri JSON (yükleme ve dışa aktarım hariç).
+    - Zamanlar ISO 8601, UTC (ör. 2026-10-15T08:58:00Z).
+    - Alan adları architecture.md şemasıyla birebir aynı (snake_case, Türkçe karakter yok).
+    - Kimlik doğrulama: `Authorization: Bearer <token>` (/auth/login hariç her uçta).
+    - Hatalar her zaman `Error` şemasında döner.
+
+    Sunucu tarafında uygulanması zorunlu kurallar (frontend'e güvenilmez)
+    1. Kör etiketleme: Çift etiketli bir meme'de, iki annotation da `gonderildi` olana kadar
+       bir annotator diğerinin annotation'ını ve o meme'deki diğer kişinin yorumlarını göremez.
+    2. Reviewer, gold kaydını onayladığı meme'in annotator'larından biri olamaz.
+    3. Sızıntı kuralı: Test sorgusunu yazan kişi, doğru cevap olarak gösterdiği meme'lerin
+       gold kaydına katkı veren (kaynak annotation sahibi veya reviewer) kişilerden biri olamaz.
+    4. Aynı sha256'ya sahip ikinci görsel yüklenemez.
+    5. `tanidiklik` 1 veya 2 ise annotation gönderilemez; atlanır ve yeniden atamaya düşer.
+    6. Gönderimde doğrulama kuralları (`GET /schema/annotation`) sunucuda tekrar kontrol edilir.
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Yerel geliştirme
+security:
+  - bearerAuth: []
+tags:
+  - name: auth
+  - name: users
+  - name: schema
+    description: Doğrulama kuralları ve etiket listeleri
+  - name: memes
+  - name: assignments
+    description: Admin atama işlemleri
+  - name: annotations
+    description: Etiketleme ekranı
+  - name: reviews
+    description: Anlaşmazlık çözümü ve gold kayıt
+  - name: comments
+  - name: test-queries
+  - name: stats
+    description: İlerleme ve uyum panoları
+  - name: admin
+    description: Yeniden kontrol, denetim kaydı, dışa aktarım
+
+paths:
+  # ---------------------------------------------------------------- auth
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Giriş yap
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Başarılı giriş
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: Giriş yapmış kullanıcı
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ---------------------------------------------------------------- users
+  /users:
+    get:
+      tags: [users]
+      summary: Kullanıcı listesi
+      description: Atama ve filtre ekranlarında kullanılır. Tüm giriş yapmış kullanıcılar görebilir.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/User' }
+    post:
+      tags: [users]
+      summary: Kullanıcı oluştur (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserCreate' }
+      responses:
+        '201':
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- schema
+  /schema/annotation:
+    get:
+      tags: [schema]
+      summary: Annotation doğrulama kuralları
+      description: |
+        Frontend formu ve anlık doğrulamayı bu kurallardan üretir; böylece kurallar tek yerde tanımlı olur.
+        Backend aynı kuralları gönderimde uygular.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnnotationSchema' }
+
+  /label-lists:
+    get:
+      tags: [schema]
+      summary: Etiket listesi (varsayılan güncel versiyon)
+      parameters:
+        - name: versiyon
+          in: query
+          required: false
+          description: Belirtilmezse güncel versiyon döner.
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LabelList' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /label-lists/versions:
+    get:
+      tags: [schema]
+      summary: Etiket listesi versiyon geçmişi
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/LabelListVersionSummary' }
+
+  /label-lists/labels:
+    post:
+      tags: [schema]
+      summary: Etiket ekle (admin)
+      description: Yeni bir etiket listesi versiyonu oluşturur.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LabelCreate' }
+      responses:
+        '201':
+          description: Yeni versiyon
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LabelList' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /label-lists/labels/{alan}/{etiket}:
+    parameters:
+      - $ref: '#/components/parameters/LabelField'
+      - name: etiket
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [schema]
+      summary: Etiketi düzenle veya pasifleştir (admin)
+      description: |
+        Yeni bir etiket listesi versiyonu oluşturur. Etiket pasifleştirilirse onu kullanan
+        annotation ve gold kayıtları `GET /recheck` listesine düşer.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LabelUpdate' }
+      responses:
+        '200':
+          description: Yeni versiyon
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LabelList' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- memes
+  /memes:
+    get:
+      tags: [memes]
+      summary: Meme listesi
+      parameters:
+        - name: etiket_durumu
+          in: query
+          schema: { $ref: '#/components/schemas/MemeLabelStatus' }
+        - name: annotator_id
+          in: query
+          schema: { type: string }
+        - name: cift_etiket
+          in: query
+          schema: { type: boolean }
+        - name: q
+          in: query
+          description: Meme id veya gold kayıttaki `ad` içinde arama
+          schema: { type: string }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemePage' }
+    post:
+      tags: [memes]
+      summary: Tek görsel yükle (admin)
+      description: id, sha256, yukleyen ve yuklenme_zamani sunucuda otomatik doldurulur.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [dosya]
+              properties:
+                dosya:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Yüklendi
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Meme' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Aynı sha256'ya sahip meme zaten var (`hata.kod = KOPYA`, `hata.detay.mevcut_meme_id`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '415':
+          description: Desteklenmeyen dosya türü (jpg, png, webp, gif kabul edilir)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /memes/bulk:
+    post:
+      tags: [memes]
+      summary: Toplu yükleme (admin)
+      description: Mevcut ~300 meme'in aktarımı için. Kopyalar reddedilir, diğerleri yüklenir (kısmi başarı).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [dosyalar]
+              properties:
+                dosyalar:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        '200':
+          description: Dosya bazında sonuç
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BulkUploadResult' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /memes/{meme_id}:
+    parameters:
+      - $ref: '#/components/parameters/MemeId'
+    get:
+      tags: [memes]
+      summary: Meme detayı
+      description: |
+        `annotasyonlar` alanı admin için tüm annotation özetlerini, diğer kullanıcılar için
+        yalnızca kendi annotation'larını içerir.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MemeDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /memes/{meme_id}/image:
+    parameters:
+      - $ref: '#/components/parameters/MemeId'
+    get:
+      tags: [memes]
+      summary: Görsel dosyası
+      parameters:
+        - name: boyut
+          in: query
+          schema:
+            type: string
+            enum: [orijinal, kucuk]
+            default: orijinal
+      responses:
+        '200':
+          description: Görsel
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /memes/{meme_id}/gold:
+    parameters:
+      - $ref: '#/components/parameters/MemeId'
+    get:
+      tags: [memes]
+      summary: Meme'in gold kaydı
+      description: Kör etiketleme sürecindeki bir annotator için, kendi annotation'ı gönderilmeden 403 döner.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoldRecord' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /memes/{meme_id}/comments:
+    parameters:
+      - $ref: '#/components/parameters/MemeId'
+    get:
+      tags: [comments]
+      summary: Meme'in yorumları
+      description: Kör etiketleme kuralına göre filtrelenmiş döner.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Comment' }
+    post:
+      tags: [comments]
+      summary: Yorum veya işaret ekle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommentCreate' }
+      responses:
+        '201':
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comment' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  # ---------------------------------------------------------------- comments
+  /comments:
+    get:
+      tags: [comments]
+      summary: Tüm yorumlar (ekip tartışma listesi)
+      parameters:
+        - name: cozuldu
+          in: query
+          schema: { type: boolean }
+        - name: tur
+          in: query
+          schema: { $ref: '#/components/schemas/CommentType' }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommentPage' }
+
+  /comments/{comment_id}:
+    parameters:
+      - name: comment_id
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [comments]
+      summary: Yorumu çözüldü/çözülmedi işaretle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cozuldu]
+              properties:
+                cozuldu: { type: boolean }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Comment' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- assignments
+  /assignments:
+    post:
+      tags: [assignments]
+      summary: Elle atama (admin)
+      description: Her meme–annotator çifti için `atandi` durumunda bir annotation oluşturur.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssignmentCreate' }
+      responses:
+        '201':
+          description: Oluşturulan annotation'lar
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AnnotationSummary' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Bu meme bu kişiye zaten atanmış (`hata.kod = ZATEN_ATANMIS`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /assignments/auto:
+    post:
+      tags: [assignments]
+      summary: Otomatik dağıtım (admin)
+      description: |
+        Atanmamış meme'leri annotator'lara eşit böler ve `cift_etiket_orani` kadarını ikinci bir kişiye de atar.
+        İkinci atamalar tüm ikililere (4 kişide 6 ikili) dengeli dağıtılır.
+        `dry_run: true` ile sadece plan döner, kayıt oluşturulmaz.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AutoAssignRequest' }
+      responses:
+        '200':
+          description: Plan (dry_run) veya uygulanan dağıtım
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AutoAssignPlan' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /annotations/{annotation_id}/reassign:
+    parameters:
+      - $ref: '#/components/parameters/AnnotationId'
+    post:
+      tags: [assignments]
+      summary: Yeniden ata (admin)
+      description: |
+        Atlanan veya tanıdıklığı düşük annotation için meme'i başka birine atar.
+        Eski annotation `atlandi` olarak kalır, yeni kişi için yeni annotation oluşur.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [yeni_annotator_id]
+              properties:
+                yeni_annotator_id: { type: string }
+      responses:
+        '201':
+          description: Yeni annotation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnnotationSummary' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- annotations
+  /me/queue:
+    get:
+      tags: [annotations]
+      summary: Bana atanan işler
+      parameters:
+        - name: durum_kodu
+          in: query
+          description: Virgülle birden fazla verilebilir (ör. atandi,devam_ediyor,revizyon_gerekli)
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/QueueItem' }
+
+  /annotations/{annotation_id}:
+    parameters:
+      - $ref: '#/components/parameters/AnnotationId'
+    get:
+      tags: [annotations]
+      summary: Annotation detayı
+      description: Sahibi, admin ve (iki annotation da gönderildikten sonra) reviewer görebilir.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Annotation' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /annotations/{annotation_id}/start:
+    parameters:
+      - $ref: '#/components/parameters/AnnotationId'
+    post:
+      tags: [annotations]
+      summary: Etiketlemeye başla
+      description: |
+        `atandi` → `devam_ediyor`, `baslama_zamani` set edilir. Etiket listesi ve şema versiyonu
+        bu anda annotation'a sabitlenir. Zaten başlamışsa aynı annotation'ı döner (idempotent).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Annotation' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /annotations/{annotation_id}/draft:
+    parameters:
+      - $ref: '#/components/parameters/AnnotationId'
+    patch:
+      tags: [annotations]
+      summary: Taslak kaydet (otomatik kayıt)
+      description: |
+        Kısmi güncelleme. Frontend birkaç saniyede bir ve sayfa kapanırken çağırır.
+        Eksik veya geçersiz alanlar kabul edilir (doğrulama yalnızca gönderimde zorunlu).
+        `surum` eşleşmezse 409 döner (aynı annotation iki sekmede açık).
+        Her kayıt revizyon geçmişine ve denetim kaydına yazılır.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AnnotationDraft' }
+      responses:
+        '200':
+          description: Kaydedildi
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftSaved' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Sürüm çakışması (`hata.kod = SURUM_CAKISMASI`, `hata.detay.guncel_surum`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /annotations/{annotation_id}/validate:
+    parameters:
+      - $ref: '#/components/parameters/AnnotationId'
+    post:
+      tags: [annotations]
+      summary: Göndermeden doğrula
+      description: Kayıtlı taslağı gönderim kurallarına göre kontrol eder, durum değiştirmez.
+      responses:
+        '200':
+          description: Sonuç
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ValidationResult' }
+
+  /annotations/{annotation_id}/submit:
+    parameters:
+      - $ref: '#/components/parameters/AnnotationId'
+    post:
+      tags: [annotations]
+      summary: Gönder
+      description: |
+        `devam_ediyor` veya `revizyon_gerekli` → `gonderildi`.
+        Tek etiketli meme'de gold kayıt bu annotation'dan otomatik oluşur ve annotation `onaylandi` olur.
+        Çift etiketli meme'de iki annotation da gönderilince meme inceleme kuyruğuna düşer.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [surum]
+              properties:
+                surum:
+                  type: integer
+                  description: Gönderilen taslağın sürümü
+      responses:
+        '200':
+          description: Gönderildi
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Annotation' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  /annotations/{annotation_id}/skip:
+    parameters:
+      - $ref: '#/components/parameters/AnnotationId'
+    post:
+      tags: [annotations]
+      summary: Atla
+      description: Annotation `atlandi` olur ve admin'in yeniden atama listesine düşer.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SkipRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Annotation' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /annotations/{annotation_id}/versions:
+    parameters:
+      - $ref: '#/components/parameters/AnnotationId'
+    get:
+      tags: [annotations]
+      summary: Revizyon geçmişi
+      responses:
+        '200':
+          description: Eskiden yeniye
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AnnotationVersion' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /annotations/{annotation_id}/request-revision:
+    parameters:
+      - $ref: '#/components/parameters/AnnotationId'
+    post:
+      tags: [reviews]
+      summary: Revizyon iste (reviewer veya admin)
+      description: '`gonderildi` → `revizyon_gerekli`. Annotator kuyruğunda not ile birlikte görünür.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [not]
+              properties:
+                not:
+                  type: string
+                  minLength: 1
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Annotation' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ---------------------------------------------------------------- reviews
+  /reviews:
+    get:
+      tags: [reviews]
+      summary: İnceleme kuyruğu
+      description: |
+        İki annotation'ı da gönderilmiş, gold kaydı olmayan çift etiketli meme'ler.
+        Yalnızca giriş yapan kullanıcının reviewer olabileceği (annotator'ı olmadığı) meme'ler döner.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ReviewQueueItem' }
+
+  /reviews/{meme_id}:
+    parameters:
+      - $ref: '#/components/parameters/MemeId'
+    get:
+      tags: [reviews]
+      summary: Anlaşmazlık ekranı verisi
+      responses:
+        '200':
+          description: İki annotation yan yana ve alan bazında karşılaştırma
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewDetail' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /reviews/{meme_id}/gold:
+    parameters:
+      - $ref: '#/components/parameters/MemeId'
+    post:
+      tags: [reviews]
+      summary: Gold kaydı onayla
+      description: |
+        Reviewer bir annotation'ı seçer veya iki annotation'ı birleştirip düzenler.
+        İçerik tam doğrulamadan geçer. İlgili annotation'lar `onaylandi` olur.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GoldCreate' }
+      responses:
+        '201':
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoldRecord' }
+        '403':
+          description: Kullanıcı bu meme'in annotator'ı (`hata.kod = REVIEWER_ANNOTATOR_OLAMAZ`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
+  # ---------------------------------------------------------------- test queries
+  /test-queries:
+    get:
+      tags: [test-queries]
+      summary: Test sorguları
+      parameters:
+        - name: yazan_id
+          in: query
+          schema: { type: string }
+        - name: mod
+          in: query
+          schema: { $ref: '#/components/schemas/QueryMode' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TestQuery' }
+    post:
+      tags: [test-queries]
+      summary: Test sorgusu ekle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TestQueryCreate' }
+      responses:
+        '201':
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestQuery' }
+        '422':
+          description: |
+            Doğrulama hatası veya sızıntı kuralı ihlali (`hata.kod = SIZINTI`,
+            `hata.detay.ihlal_eden_memeler` listesi).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /test-queries/{query_id}:
+    parameters:
+      - name: query_id
+        in: path
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [test-queries]
+      summary: Test sorgusunu düzenle (sadece yazan veya admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TestQueryUpdate' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestQuery' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+    delete:
+      tags: [test-queries]
+      summary: Test sorgusunu sil (sadece yazan veya admin)
+      responses:
+        '204':
+          description: Silindi
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------- stats
+  /stats/progress:
+    get:
+      tags: [stats]
+      summary: İlerleme panosu
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProgressStats' }
+
+  /stats/agreement:
+    get:
+      tags: [stats]
+      summary: Uyum panosu
+      description: |
+        Yalnızca iki annotation'ı da gönderilmiş çift etiketli meme'ler üzerinden hesaplanır.
+        Kalibrasyon turu annotation'ları hesaba katılmaz. Annotator'lar için, kör etiketleme
+        sürerken etiket bazında ayrıntı gizlenebilir (yalnızca admin görür).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgreementStats' }
+
+  # ---------------------------------------------------------------- admin
+  /recheck:
+    get:
+      tags: [admin]
+      summary: Yeniden kontrol listesi
+      description: Pasifleştirilmiş veya değiştirilmiş etiketleri kullanan annotation ve gold kayıtları.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RecheckItem' }
+
+  /audit:
+    get:
+      tags: [admin]
+      summary: Denetim kaydı (admin)
+      parameters:
+        - name: kayit_tipi
+          in: query
+          schema: { $ref: '#/components/schemas/RecordType' }
+        - name: kayit_id
+          in: query
+          schema: { type: string }
+        - name: kullanici_id
+          in: query
+          schema: { type: string }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditPage' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /export/{dosya}:
+    parameters:
+      - name: dosya
+        in: path
+        required: true
+        schema:
+          type: string
+          enum: [gold.jsonl, annotations_raw.jsonl, test_set.jsonl]
+    get:
+      tags: [admin]
+      summary: Dışa aktarım (admin)
+      description: |
+        Satır başına bir JSON nesnesi. Kullanıcı kimlikleri takma adla (a1–a4) yazılır.
+        - gold.jsonl: satır başına `GoldExportRow`
+        - annotations_raw.jsonl: satır başına `Annotation` (kullanıcılar takma adlı)
+        - test_set.jsonl: satır başına `TestQuery` (yazan takma adlı)
+      responses:
+        '200':
+          description: NDJSON dosyası (Content-Disposition attachment)
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+# ======================================================================
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    MemeId:
+      name: meme_id
+      in: path
+      required: true
+      schema: { type: string }
+      example: kemal-sunal-hayirdir
+    AnnotationId:
+      name: annotation_id
+      in: path
+      required: true
+      schema: { type: string }
+    LabelField:
+      name: alan
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/LabelField' }
+    Page:
+      name: sayfa
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: boyut
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+
+  responses:
+    Unauthorized:
+      description: Token yok veya geçersiz
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Yetki yok (rol veya kör etiketleme kuralı)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Kayıt bulunamadı
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Geçersiz durum geçişi veya çakışma
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationFailed:
+      description: Doğrulama hatası; `hata.alanlar` hangi alanın hangi kuralı ihlal ettiğini listeler
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    # ------------------------------------------------------------ ortak
+    Error:
+      type: object
+      required: [hata]
+      properties:
+        hata:
+          type: object
+          required: [kod, mesaj]
+          properties:
+            kod:
+              type: string
+              description: |
+                Makine tarafından okunabilir hata kodu. Örnekler: YETKISIZ, YASAK, BULUNAMADI,
+                KOPYA, ZATEN_ATANMIS, GECERSIZ_DURUM_GECISI, SURUM_CAKISMASI, DOGRULAMA,
+                TANIDIKLIK_DUSUK, SIZINTI, REVIEWER_ANNOTATOR_OLAMAZ
+              example: DOGRULAMA
+            mesaj:
+              type: string
+              description: Kullanıcıya gösterilebilecek Türkçe açıklama
+              example: Gönderim için bazı alanlar eksik veya hatalı.
+            alanlar:
+              type: array
+              items: { $ref: '#/components/schemas/FieldError' }
+            detay:
+              type: object
+              additionalProperties: true
+
+    FieldError:
+      type: object
+      required: [alan, kural, mesaj]
+      properties:
+        alan:
+          type: string
+          description: Alan yolu (liste elemanları için `ornek_durumlar[2]`)
+          example: durum
+        kural:
+          type: string
+          enum: [zorunlu, min_karakter, min_adet, max_adet, tekrar, gecersiz_etiket, pasif_etiket, aralik]
+        mesaj:
+          type: string
+          example: En az 20 karakter olmalı.
+
+    UserRef:
+      type: object
+      required: [id, gorunen_ad]
+      properties:
+        id: { type: string }
+        gorunen_ad: { type: string }
+
+    User:
+      type: object
+      required: [id, kullanici_adi, gorunen_ad, takma_ad, admin]
+      properties:
+        id: { type: string }
+        kullanici_adi: { type: string }
+        gorunen_ad: { type: string }
+        takma_ad:
+          type: string
+          description: Dışa aktarımda kullanılan takma ad
+          example: a1
+        admin:
+          type: boolean
+          description: Herkes annotator'dır; reviewer rolü meme bazında belirlenir, kullanıcıya bağlı değildir.
+
+    UserCreate:
+      type: object
+      required: [kullanici_adi, gorunen_ad, sifre, takma_ad]
+      properties:
+        kullanici_adi: { type: string }
+        gorunen_ad: { type: string }
+        sifre: { type: string, minLength: 8, format: password }
+        takma_ad: { type: string }
+        admin: { type: boolean, default: false }
+
+    LoginRequest:
+      type: object
+      required: [kullanici_adi, sifre]
+      properties:
+        kullanici_adi: { type: string }
+        sifre: { type: string, format: password }
+
+    LoginResponse:
+      type: object
+      required: [erisim_token, token_tipi, sure_sn, kullanici]
+      properties:
+        erisim_token: { type: string }
+        token_tipi:
+          type: string
+          enum: [bearer]
+        sure_sn:
+          type: integer
+          description: Token geçerlilik süresi (saniye)
+        kullanici: { $ref: '#/components/schemas/User' }
+
+    RecordType:
+      type: string
+      enum: [meme, annotation, gold, yorum, etiket_listesi, test_sorgusu, kullanici]
+
+    # ------------------------------------------------------------ şema / etiketler
+    LabelField:
+      type: string
+      enum: [duygu, niyet, mekanizma, uyari]
+
+    Label:
+      type: object
+      required: [etiket, gorunen_ad, tanim, aktif]
+      properties:
+        etiket:
+          type: string
+          example: bikkinlik
+        gorunen_ad:
+          type: string
+          example: Bıkkınlık
+        tanim:
+          type: string
+          description: Kılavuzdaki kısa tanım; etiket seçicide üzerine gelince gösterilir
+        ornekler:
+          type: array
+          description: Örnek meme id'leri
+          maxItems: 2
+          items: { type: string }
+        aktif: { type: boolean }
+        eklenme_tarihi: { type: string, format: date-time }
+
+    LabelList:
+      type: object
+      required: [versiyon, olusturma_zamani, alanlar]
+      properties:
+        versiyon:
+          type: string
+          example: v3
+        olusturma_zamani: { type: string, format: date-time }
+        alanlar:
+          type: object
+          required: [duygu, niyet, mekanizma, uyari]
+          properties:
+            duygu:
+              type: array
+              items: { $ref: '#/components/schemas/Label' }
+            niyet:
+              type: array
+              items: { $ref: '#/components/schemas/Label' }
+            mekanizma:
+              type: array
+              items: { $ref: '#/components/schemas/Label' }
+            uyari:
+              type: array
+              items: { $ref: '#/components/schemas/Label' }
+
+    LabelListVersionSummary:
+      type: object
+      required: [versiyon, olusturma_zamani]
+      properties:
+        versiyon: { type: string }
+        olusturma_zamani: { type: string, format: date-time }
+        olusturan: { $ref: '#/components/schemas/UserRef' }
+        degisiklik_ozeti:
+          type: string
+          example: "duygu: 'panik' eklendi"
+
+    LabelCreate:
+      type: object
+      required: [alan, etiket, gorunen_ad, tanim]
+      properties:
+        alan: { $ref: '#/components/schemas/LabelField' }
+        etiket:
+          type: string
+          pattern: '^[a-z0-9_]+$'
+        gorunen_ad: { type: string }
+        tanim: { type: string }
+        ornekler:
+          type: array
+          maxItems: 2
+          items: { type: string }
+
+    LabelUpdate:
+      type: object
+      properties:
+        gorunen_ad: { type: string }
+        tanim: { type: string }
+        ornekler:
+          type: array
+          maxItems: 2
+          items: { type: string }
+        aktif: { type: boolean }
+
+    FieldRule:
+      type: object
+      required: [zorunlu]
+      properties:
+        zorunlu: { type: boolean }
+        tip:
+          type: string
+          enum: [metin, metin_listesi, etiket_listesi, enum]
+        min_karakter: { type: integer }
+        min_adet: { type: integer }
+        max_adet: { type: integer }
+        tekrarsiz:
+          type: boolean
+          description: Liste elemanları birbirinin tekrarı olamaz
+        etiket_alani:
+          allOf:
+            - $ref: '#/components/schemas/LabelField'
+          description: Değerler bu etiket listesinden seçilir
+        degerler:
+          type: array
+          items: { type: string }
+        aciklama:
+          type: string
+          description: Formda yardım metni olarak gösterilir
+
+    AnnotationSchema:
+      type: object
+      required: [sema_versiyonu, alanlar]
+      properties:
+        sema_versiyonu:
+          type: string
+          example: "1.0"
+        alanlar:
+          type: object
+          description: Alan adı → kural
+          additionalProperties: { $ref: '#/components/schemas/FieldRule' }
+          example:
+            tur: { zorunlu: true, tip: enum, degerler: [template, hazir_meme] }
+            ad: { zorunlu: true, tip: metin }
+            kaynak: { zorunlu: false, tip: metin }
+            durum: { zorunlu: true, tip: metin, min_karakter: 20, aciklama: "Somut varlık değil, soyut iskelet" }
+            ornek_durumlar: { zorunlu: true, tip: metin_listesi, min_adet: 3, max_adet: 5, tekrarsiz: true }
+            uygun_olmayan_durumlar: { zorunlu: true, tip: metin_listesi, min_adet: 1, max_adet: 2 }
+            kulturel_bilgi: { zorunlu: true, tip: metin }
+            duygu: { zorunlu: true, tip: etiket_listesi, etiket_alani: duygu, min_adet: 1, max_adet: 3 }
+            niyet: { zorunlu: true, tip: etiket_listesi, etiket_alani: niyet, min_adet: 1, max_adet: 3 }
+            mekanizma: { zorunlu: true, tip: etiket_listesi, etiket_alani: mekanizma, min_adet: 1, max_adet: 3 }
+            uyari: { zorunlu: true, tip: etiket_listesi, etiket_alani: uyari, min_adet: 0, aciklama: "Boş liste = bilinçli 'uyarı yok' onayı" }
+            notlar: { zorunlu: false, tip: metin }
+
+    # ------------------------------------------------------------ meme
+    MemeLabelStatus:
+      type: string
+      description: Meme'in annotation'larından türetilen genel durum
+      enum: [atanmadi, etiketleniyor, inceleme_bekliyor, gold_hazir, yeniden_kontrol]
+
+    Meme:
+      type: object
+      required: [id, gorsel_url, kucuk_gorsel_url, sha256, yukleyen, yuklenme_zamani, etiket_durumu, annotatorlar, gold_var]
+      properties:
+        id:
+          type: string
+          example: kemal-sunal-hayirdir
+        gorsel_url:
+          type: string
+          example: /api/v1/memes/kemal-sunal-hayirdir/image
+        kucuk_gorsel_url:
+          type: string
+          example: /api/v1/memes/kemal-sunal-hayirdir/image?boyut=kucuk
+        sha256: { type: string }
+        yukleyen: { $ref: '#/components/schemas/UserRef' }
+        yuklenme_zamani: { type: string, format: date-time }
+        etiket_durumu: { $ref: '#/components/schemas/MemeLabelStatus' }
+        annotatorlar:
+          type: array
+          description: Annotation kayıtlarından türetilir
+          items: { $ref: '#/components/schemas/UserRef' }
+        cift_etiket: { type: boolean }
+        gold_var: { type: boolean }
+        ad:
+          type: string
+          nullable: true
+          description: Gold kayıt varsa oradaki `ad`
+        acik_yorum_sayisi: { type: integer }
+
+    MemeDetail:
+      allOf:
+        - $ref: '#/components/schemas/Meme'
+        - type: object
+          properties:
+            annotasyonlar:
+              type: array
+              items: { $ref: '#/components/schemas/AnnotationSummary' }
+
+    MemePage:
+      type: object
+      required: [ogeler, toplam, sayfa, boyut]
+      properties:
+        ogeler:
+          type: array
+          items: { $ref: '#/components/schemas/Meme' }
+        toplam: { type: integer }
+        sayfa: { type: integer }
+        boyut: { type: integer }
+
+    BulkUploadResult:
+      type: object
+      required: [yuklenen, reddedilen]
+      properties:
+        yuklenen:
+          type: array
+          items: { $ref: '#/components/schemas/Meme' }
+        reddedilen:
+          type: array
+          items:
+            type: object
+            required: [dosya_adi, sebep]
+            properties:
+              dosya_adi: { type: string }
+              sebep:
+                type: string
+                enum: [kopya, desteklenmeyen_tur, bozuk_dosya]
+              mevcut_meme_id:
+                type: string
+                nullable: true
+
+    # ------------------------------------------------------------ annotation
+    AnnotationStatus:
+      type: string
+      enum: [atandi, devam_ediyor, gonderildi, revizyon_gerekli, onaylandi, atlandi]
+
+    AnnotationContent:
+      type: object
+      description: |
+        architecture.md §3 içerik alanları. Taslakta tüm alanlar opsiyoneldir;
+        zorunluluklar gönderimde `AnnotationSchema` kurallarına göre uygulanır.
+      properties:
+        tur:
+          type: string
+          nullable: true
+          enum: [template, hazir_meme]
+        ad: { type: string, nullable: true }
+        kaynak: { type: string, nullable: true }
+        durum: { type: string, nullable: true }
+        ornek_durumlar:
+          type: array
+          items: { type: string }
+        uygun_olmayan_durumlar:
+          type: array
+          items: { type: string }
+        kulturel_bilgi: { type: string, nullable: true }
+        duygu:
+          type: array
+          items: { type: string }
+        niyet:
+          type: array
+          items: { type: string }
+        mekanizma:
+          type: array
+          items: { type: string }
+        uyari:
+          type: array
+          nullable: true
+          description: "null = henüz cevaplanmadı (gönderilemez), [] = bilinçli 'uyarı yok' onayı"
+          items: { type: string }
+        notlar: { type: string, nullable: true }
+
+    FieldConfidence:
+      type: object
+      description: Alan adı → güven (1 = emin değilim, 3 = eminim). Sadece işaretlenen alanlar gönderilir.
+      additionalProperties:
+        type: integer
+        minimum: 1
+        maximum: 3
+      example:
+        kulturel_bilgi: 1
+        mekanizma: 2
+
+    SkipInfo:
+      type: object
+      required: [gerekce]
+      properties:
+        gerekce:
+          type: string
+          enum: [tanimiyorum, tanidiklik_dusuk, uygun_degil, diger]
+        aciklama: { type: string, nullable: true }
+
+    AnnotationSummary:
+      type: object
+      required: [id, meme_id, annotator, durum_kodu, cift_etiket, kalibrasyon]
+      properties:
+        id: { type: string }
+        meme_id: { type: string }
+        annotator: { $ref: '#/components/schemas/UserRef' }
+        durum_kodu: { $ref: '#/components/schemas/AnnotationStatus' }
+        cift_etiket: { type: boolean }
+        kalibrasyon:
+          type: boolean
+          description: Kalibrasyon turu annotation'ı; uyum ölçümüne katılmaz
+        gonderme_zamani:
+          type: string
+          format: date-time
+          nullable: true
+
+    Annotation:
+      type: object
+      required:
+        - id
+        - meme_id
+        - annotator
+        - durum_kodu
+        - cift_etiket
+        - kalibrasyon
+        - icerik
+        - surum
+        - harcanan_sure_sn
+        - atanma_zamani
+      properties:
+        id: { type: string }
+        meme_id: { type: string }
+        annotator: { $ref: '#/components/schemas/UserRef' }
+        durum_kodu: { $ref: '#/components/schemas/AnnotationStatus' }
+        cift_etiket: { type: boolean }
+        kalibrasyon: { type: boolean }
+        icerik: { $ref: '#/components/schemas/AnnotationContent' }
+        tanidiklik:
+          type: integer
+          minimum: 1
+          maximum: 5
+          nullable: true
+        alan_guveni: { $ref: '#/components/schemas/FieldConfidence' }
+        atlandi:
+          allOf:
+            - $ref: '#/components/schemas/SkipInfo'
+          nullable: true
+        revizyon_notu:
+          type: string
+          nullable: true
+          description: Reviewer'ın revizyon isterken yazdığı not
+        atanma_zamani: { type: string, format: date-time }
+        baslama_zamani: { type: string, format: date-time, nullable: true }
+        gonderme_zamani: { type: string, format: date-time, nullable: true }
+        guncellenme_zamani: { type: string, format: date-time, nullable: true }
+        harcanan_sure_sn:
+          type: integer
+          description: Aktif süre toplamı
+        sema_versiyonu: { type: string, nullable: true }
+        etiket_listesi_versiyonu: { type: string, nullable: true }
+        surum:
+          type: integer
+          description: Her taslak kaydında artar; iyimser kilitleme için
+
+    AnnotationDraft:
+      type: object
+      required: [surum]
+      properties:
+        surum:
+          type: integer
+          description: İstemcinin elindeki son sürüm
+        icerik:
+          $ref: '#/components/schemas/AnnotationContent'
+        tanidiklik:
+          type: integer
+          minimum: 1
+          maximum: 5
+        alan_guveni: { $ref: '#/components/schemas/FieldConfidence' }
+        aktif_sure_artis_sn:
+          type: integer
+          minimum: 0
+          maximum: 300
+          description: |
+            Son kayıttan bu yana sekme odaktayken ve kullanıcı etkileşimdeyken geçen süre.
+            Sunucu `harcanan_sure_sn`'ye ekler. 300 sn üstü kırpılır.
+
+    DraftSaved:
+      type: object
+      required: [surum, guncellenme_zamani, harcanan_sure_sn]
+      properties:
+        surum: { type: integer }
+        guncellenme_zamani: { type: string, format: date-time }
+        harcanan_sure_sn: { type: integer }
+
+    ValidationResult:
+      type: object
+      required: [gecerli, hatalar]
+      properties:
+        gecerli: { type: boolean }
+        hatalar:
+          type: array
+          items: { $ref: '#/components/schemas/FieldError' }
+
+    SkipRequest:
+      allOf:
+        - $ref: '#/components/schemas/SkipInfo'
+        - type: object
+          properties:
+            tanidiklik:
+              type: integer
+              minimum: 1
+              maximum: 5
+
+    AnnotationVersion:
+      type: object
+      required: [surum, zaman, degistiren, icerik]
+      properties:
+        surum: { type: integer }
+        zaman: { type: string, format: date-time }
+        degistiren: { $ref: '#/components/schemas/UserRef' }
+        durum_kodu: { $ref: '#/components/schemas/AnnotationStatus' }
+        icerik: { $ref: '#/components/schemas/AnnotationContent' }
+
+    QueueItem:
+      type: object
+      required: [annotation_id, meme_id, kucuk_gorsel_url, durum_kodu, cift_etiket, kalibrasyon]
+      properties:
+        annotation_id: { type: string }
+        meme_id: { type: string }
+        kucuk_gorsel_url: { type: string }
+        durum_kodu: { $ref: '#/components/schemas/AnnotationStatus' }
+        cift_etiket: { type: boolean }
+        kalibrasyon: { type: boolean }
+        guncellenme_zamani: { type: string, format: date-time, nullable: true }
+        revizyon_notu: { type: string, nullable: true }
+
+    # ------------------------------------------------------------ atama
+    AssignmentCreate:
+      type: object
+      required: [meme_ids, annotator_id]
+      properties:
+        meme_ids:
+          type: array
+          minItems: 1
+          items: { type: string }
+        annotator_id: { type: string }
+        cift_etiket:
+          type: boolean
+          default: false
+        kalibrasyon:
+          type: boolean
+          default: false
+
+    AutoAssignRequest:
+      type: object
+      required: [annotator_ids]
+      properties:
+        annotator_ids:
+          type: array
+          minItems: 2
+          items: { type: string }
+        cift_etiket_orani:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 0.2
+        dry_run:
+          type: boolean
+          default: true
+
+    AutoAssignPlan:
+      type: object
+      required: [dry_run, atamalar, kisi_basi, ikili_dagilimi]
+      properties:
+        dry_run: { type: boolean }
+        atamalar:
+          type: array
+          items:
+            type: object
+            required: [meme_id, annotator_ids]
+            properties:
+              meme_id: { type: string }
+              annotator_ids:
+                type: array
+                items: { type: string }
+        kisi_basi:
+          type: array
+          items:
+            type: object
+            properties:
+              annotator: { $ref: '#/components/schemas/UserRef' }
+              meme_sayisi: { type: integer }
+        ikili_dagilimi:
+          type: array
+          items:
+            type: object
+            properties:
+              ikili:
+                type: array
+                minItems: 2
+                maxItems: 2
+                items: { $ref: '#/components/schemas/UserRef' }
+              meme_sayisi: { type: integer }
+
+    # ------------------------------------------------------------ review / gold
+    ReviewQueueItem:
+      type: object
+      required: [meme_id, kucuk_gorsel_url, annotation_ids]
+      properties:
+        meme_id: { type: string }
+        kucuk_gorsel_url: { type: string }
+        annotation_ids:
+          type: array
+          items: { type: string }
+        son_gonderme_zamani: { type: string, format: date-time }
+
+    ReviewDetail:
+      type: object
+      required: [meme, annotasyonlar, karsilastirma]
+      properties:
+        meme: { $ref: '#/components/schemas/Meme' }
+        annotasyonlar:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items: { $ref: '#/components/schemas/Annotation' }
+        karsilastirma:
+          type: array
+          description: Alan bazında eşleşme özeti; ekranda farklı alanları vurgulamak için
+          items:
+            type: object
+            required: [alan, ayni]
+            properties:
+              alan: { type: string }
+              ayni:
+                type: boolean
+                description: Etiket alanlarında küme eşitliği, metin alanlarında birebir eşitlik
+              ortak_etiketler:
+                type: array
+                items: { type: string }
+
+    GoldCreate:
+      type: object
+      required: [icerik, kaynak_annotationlar]
+      properties:
+        icerik: { $ref: '#/components/schemas/AnnotationContent' }
+        kaynak_annotationlar:
+          type: array
+          minItems: 1
+          items: { type: string }
+        cozum_notu: { type: string, nullable: true }
+
+    GoldRecord:
+      type: object
+      required: [meme_id, icerik, kaynak_annotationlar, onay_zamani]
+      properties:
+        meme_id: { type: string }
+        icerik: { $ref: '#/components/schemas/AnnotationContent' }
+        kaynak_annotationlar:
+          type: array
+          items: { type: string }
+        reviewer:
+          allOf:
+            - $ref: '#/components/schemas/UserRef'
+          nullable: true
+          description: Tek etiketli meme'de null
+        cozum_notu: { type: string, nullable: true }
+        onay_zamani: { type: string, format: date-time }
+        sema_versiyonu: { type: string }
+        etiket_listesi_versiyonu: { type: string }
+
+    GoldExportRow:
+      description: gold.jsonl satırı (architecture.md §3 şeması)
+      allOf:
+        - type: object
+          required: [id, gorsel]
+          properties:
+            id: { type: string }
+            gorsel:
+              type: string
+              example: memes/kemal-sunal-hayirdir.jpg
+        - $ref: '#/components/schemas/AnnotationContent'
+        - type: object
+          properties:
+            annotator:
+              type: array
+              description: Takma adlar
+              items: { type: string }
+            reviewer: { type: string, nullable: true }
+            sema_versiyonu: { type: string }
+            etiket_listesi_versiyonu: { type: string }
+
+    RecheckItem:
+      type: object
+      required: [kayit_tipi, kayit_id, meme_id, eski_versiyon, etkilenen_etiketler]
+      properties:
+        kayit_tipi:
+          type: string
+          enum: [annotation, gold]
+        kayit_id: { type: string }
+        meme_id: { type: string }
+        eski_versiyon: { type: string }
+        etkilenen_etiketler:
+          type: array
+          items:
+            type: object
+            properties:
+              alan: { $ref: '#/components/schemas/LabelField' }
+              etiket: { type: string }
+              degisiklik:
+                type: string
+                enum: [pasiflestirildi, tanim_degisti]
+
+    # ------------------------------------------------------------ yorum
+    CommentType:
+      type: string
+      enum: [soru, kilavuz_onerisi, kopya_suphesi, hata]
+
+    Comment:
+      type: object
+      required: [id, meme_id, yazan, zaman, metin, tur, cozuldu]
+      properties:
+        id: { type: string }
+        meme_id: { type: string }
+        alan:
+          type: string
+          nullable: true
+          description: Opsiyonel; ör. uyari
+        yazan: { $ref: '#/components/schemas/UserRef' }
+        zaman: { type: string, format: date-time }
+        metin: { type: string }
+        tur: { $ref: '#/components/schemas/CommentType' }
+        cozuldu: { type: boolean }
+
+    CommentCreate:
+      type: object
+      required: [metin, tur]
+      properties:
+        alan: { type: string, nullable: true }
+        metin:
+          type: string
+          minLength: 1
+        tur: { $ref: '#/components/schemas/CommentType' }
+
+    CommentPage:
+      type: object
+      required: [ogeler, toplam, sayfa, boyut]
+      properties:
+        ogeler:
+          type: array
+          items: { $ref: '#/components/schemas/Comment' }
+        toplam: { type: integer }
+        sayfa: { type: integer }
+        boyut: { type: integer }
+
+    # ------------------------------------------------------------ test sorgusu
+    QueryMode:
+      type: string
+      enum: [durum, tarif]
+
+    TestQuery:
+      type: object
+      required: [id, metin, mod, dogru_memeler, yazan, zaman]
+      properties:
+        id: { type: string }
+        metin: { type: string }
+        mod: { $ref: '#/components/schemas/QueryMode' }
+        dogru_memeler:
+          type: array
+          minItems: 1
+          items: { type: string }
+        yazan: { $ref: '#/components/schemas/UserRef' }
+        zaman: { type: string, format: date-time }
+
+    TestQueryCreate:
+      type: object
+      required: [metin, mod, dogru_memeler]
+      properties:
+        metin:
+          type: string
+          minLength: 5
+        mod: { $ref: '#/components/schemas/QueryMode' }
+        dogru_memeler:
+          type: array
+          minItems: 1
+          items: { type: string }
+
+    TestQueryUpdate:
+      type: object
+      properties:
+        metin: { type: string, minLength: 5 }
+        mod: { $ref: '#/components/schemas/QueryMode' }
+        dogru_memeler:
+          type: array
+          minItems: 1
+          items: { type: string }
+
+    # ------------------------------------------------------------ istatistik
+    ProgressStats:
+      type: object
+      required: [genel, kullanicilar]
+      properties:
+        genel:
+          type: object
+          properties:
+            toplam_meme: { type: integer }
+            atanmamis: { type: integer }
+            gold_hazir: { type: integer }
+            inceleme_bekleyen: { type: integer }
+            yeniden_atama_bekleyen: { type: integer }
+        kullanicilar:
+          type: array
+          items:
+            type: object
+            required: [kullanici, atanan, tamamlanan, kalan, atlanan]
+            properties:
+              kullanici: { $ref: '#/components/schemas/UserRef' }
+              atanan: { type: integer }
+              tamamlanan: { type: integer }
+              kalan: { type: integer }
+              atlanan: { type: integer }
+              revizyon_bekleyen: { type: integer }
+              ortalama_sure_sn:
+                type: number
+                nullable: true
+
+    AgreementStats:
+      type: object
+      required: [hesaplama_zamani, cift_etiketli_meme_sayisi, alanlar]
+      properties:
+        hesaplama_zamani: { type: string, format: date-time }
+        cift_etiketli_meme_sayisi:
+          type: integer
+          description: Hesaba katılan (iki annotation'ı da gönderilmiş) meme sayısı
+        alanlar:
+          type: array
+          items:
+            type: object
+            required: [alan, metrik, deger, n]
+            properties:
+              alan:
+                type: string
+                enum: [tur, duygu, niyet, mekanizma, uyari]
+              metrik:
+                type: string
+                enum: [cohen_kappa, krippendorff_alpha_masi]
+              deger:
+                type: number
+                nullable: true
+                description: Yeterli veri yoksa null
+              n: { type: integer }
+              dusuk_uyum:
+                type: boolean
+                description: deger < 0.4
+        etiketler:
+          type: array
+          description: Etiket bazında kappa ve en çok anlaşmazlık çıkanlar (anlaşmazlık sayısına göre azalan)
+          items:
+            type: object
+            properties:
+              alan: { $ref: '#/components/schemas/LabelField' }
+              etiket: { type: string }
+              kappa: { type: number, nullable: true }
+              anlasmazlik_sayisi: { type: integer }
+              kullanim_sayisi: { type: integer }
+
+    # ------------------------------------------------------------ denetim
+    AuditEntry:
+      type: object
+      required: [id, zaman, kullanici, kayit_tipi, kayit_id, islem]
+      properties:
+        id: { type: string }
+        zaman: { type: string, format: date-time }
+        kullanici: { $ref: '#/components/schemas/UserRef' }
+        kayit_tipi: { $ref: '#/components/schemas/RecordType' }
+        kayit_id: { type: string }
+        islem:
+          type: string
+          enum: [olusturma, guncelleme, durum_degisikligi, silme]
+        alan: { type: string, nullable: true }
+        eski_deger:
+          nullable: true
+          description: Herhangi bir JSON değeri
+        yeni_deger:
+          nullable: true
+          description: Herhangi bir JSON değeri
+
+    AuditPage:
+      type: object
+      required: [ogeler, toplam, sayfa, boyut]
+      properties:
+        ogeler:
+          type: array
+          items: { $ref: '#/components/schemas/AuditEntry' }
+        toplam: { type: integer }
+        sayfa: { type: integer }
+        boyut: { type: integer }
