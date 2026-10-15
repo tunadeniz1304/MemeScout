@@ -1,0 +1,38 @@
+# Mimari Karar Kayıtları (ADR)
+
+Bu klasör, MemeScout'ta alınan önemli teknik kararları ve gerekçelerini tutar.
+Her karar ayrı bir dosyadadır: `NNNN-kisa-ad.md`. Numaralar artarak gider, eski numaralar yeniden kullanılmaz.
+
+Bir karar değişirse eski kaydı silmeyin; durumunu "Yerini aldı: ADR-NNNN" yapıp yeni bir kayıt açın.
+
+**Durumlar:** Önerildi · Kabul edildi · Reddedildi · Yerini aldı
+
+| No | Karar | Durum |
+|---|---|---|
+| [0001](0001-api-contract-tek-kaynak.md) | API contract tek doğru kaynak | Önerildi |
+| [0002](0002-sizinti-kurali-reviewer-dahil.md) | Sızıntı kuralı gold kayda katkı veren herkesi kapsar | Önerildi |
+| [0003](0003-kor-etiketlemede-yorumlar-gizli.md) | Kör etiketleme yorumları da kapsar | Önerildi |
+| [0004](0004-uyari-null-ve-bos-liste.md) | `uyari` alanında `null` ve `[]` ayrımı | Önerildi |
+| [0005](0005-annotation-ek-alanlari.md) | Annotation'a `kalibrasyon`, `surum`, `revizyon_notu` alanları | Önerildi |
+| [0006](0006-gold-annotator-liste.md) | `gold.jsonl`'de `annotator` alanı liste | Önerildi |
+| [0007](0007-ek-api-islemleri.md) | Dokümanda olmayan ek API işlemleri | Önerildi |
+| [0008](0008-etiket-sistem-adlari.md) | Etiketlerin sistem adları | Önerildi (karar bekliyor) |
+
+## Şablon
+
+```markdown
+# ADR-NNNN: Başlık
+
+- **Durum:** Önerildi
+- **Tarih:** YYYY-AA-GG
+- **İlgili:** dosya, bölüm veya issue
+
+## Bağlam
+Neden bir karar gerekti? Sorun ne?
+
+## Karar
+Ne yapmaya karar verdik?
+
+## Sonuçlar
+Bu kararın getirdiği kazançlar, maliyetler ve yapılması gereken işler.
+```
