@@ -118,6 +118,17 @@ Girdi (durum / konuşma / tarif)
 
 İş bölümü: retrieval yalnızca recall'u sağlar (doğru meme ilk 30'a girsin), mizah yargısını reranker verir.
 
+### 4.1 İki Modun Sonuç Döndürme Farkı
+
+1. **Durum / Reaksiyon Modu (`mod=durum`):**
+   - **Hedef:** Sohbet/konuşma bağlamına en uygun mizahi reaksiyonu vermek.
+   - **Çıktı:** Reranker tarafından elenmiş ve gerekçelendirilmiş **Top-5** meme.
+
+2. **Görsel Tarif Modu (`mod=tarif`):**
+   - **Hedef:** Kullanıcının aklında kalan spesifik bir görseli bulmasını sağlamak (Katalog/Arama Motoru davranışı).
+   - **Çıktı:** Aday kısıtlaması yoktur. Görsel benzerlik skoru ($V_{visual}$) en yüksek olandan en düşüğe doğru **tüm veri seti sıralı liste (sayfalamalı/infinite scroll)** olarak sunulur.
+   - **Tükenme Durumu:** Belirlenen taban benzerlik eşiğinin altına inildiğinde veya liste bittiğinde kullanıcıya *"Aradığınız meme veri setinde bulunamadı"* bilgisi verilir.
+
 ## 5. Teknik Seçenekler
 
 | Bileşen | Seçim | Not |
