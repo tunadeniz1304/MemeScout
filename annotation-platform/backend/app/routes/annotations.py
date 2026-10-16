@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 from typing import List
 
+from app.services.guardrail import guardrail
+
 from fastapi import APIRouter, Depends
 from sqlmodel import Session, select
 
@@ -57,6 +59,9 @@ def taslak_kaydet(
 # -------------------------------------------------------------------
 # 2. GÖNDERME (Submit)
 # -------------------------------------------------------------------
+# -------------------------------------------------------------------
+# 2. GÖNDERME (Submit) ve BERT Guardrail
+# -------------------------------------------------------------------
 @router.post("/{id}/submit", response_model=AnnotationResponse)
 def gonder(
     id: str,
@@ -71,9 +76,30 @@ def gonder(
     if annotation.surum != req.surum:
         raise ApiHatasi(409, "SURUM_CAKISMASI", "Sürüm uyumsuz.")
 
-    # İLERİDE BURAYA: ADR-0013 BERT Guardrail Kontrolü Eklenecek
-    # eger guardrail_fail: raise ApiHatasi(422, "GUVENSIZ_ICERIK", ...)
+    # 1. Metinleri Sentezle
+    # Pydantic'ten dict olarak veya obje olarak dönmesine göre uyarlama
+    icerik_dict = annotation.icerik
+    kontrol_metni = (
+        f"{icerik_dict.get('gorsel_tanim', '')} "
+        f"{icerik_dict.get('durum', '')} "
+        f"{' '.join(icerik_dict.get('anahtar_kelimeler', []))}"
+    )
 
+    # 2. ADR-0013: BERT Guardrail Denetimi
+    guvenli, ofansiflik_skoru = guardrail.denetle(kontrol_metni)
+    
+    if not guvenli:
+        raise ApiHatasi(
+            status_kodu=422, 
+            kod="GUVENSIZ_ICERIK", 
+            mesaj="Metin, Hugging Face BERT içerik denetim modeli tarafından zararlı veya uygunsuz olarak değerlendirildi.",
+            detay={
+                "model": "emrecan/bert-base-turkish-cased-offensive",
+                "ofansiflik_skoru": ofansiflik_skoru
+            }
+        )
+
+    # 3. Güvenliyse Gönder
     annotation.durum_kodu = "gonderildi"
     annotation.gonderme_zamani = simdi()
     annotation.surum += 1
@@ -83,7 +109,6 @@ def gonder(
     session.refresh(annotation)
     
     return annotation
-
 # -------------------------------------------------------------------
 # 3. YORUM YAPMA (Diğer Ekip Üyeleri İçin Asenkron İletişim)
 # -------------------------------------------------------------------
