@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 class UserOut(BaseModel):
@@ -36,9 +36,40 @@ class LoginResponse(BaseModel):
     sure_sn: int
     kullanici: UserOut
 
+# ==========================================
+# İÇERİK ŞEMASI (Hashtag ve Karakter Limitleri)
+# ==========================================
+
+class AnnotationIcerik(BaseModel):
+    gorsel_tanim: str = Field(
+        ..., 
+        max_length=300, 
+        description="Görselin nesnel, objektif tarifi. Kameranın gördükleri."
+    )
+    durum: str = Field(
+        ..., 
+        max_length=250, 
+        description="Meme'in verdiği soyut duygu, ruh hali veya kullanıldığı bağlam."
+    )
+    anahtar_kelimeler: List[str] = Field(
+        ..., 
+        min_length=3, 
+        max_length=10, 
+        description="Embedder'ı destekleyecek hashtagler, argo ve kestirme terimler."
+    )
+    baglam_notu: Optional[str] = Field(
+        default=None, 
+        max_length=150, 
+        description="Eğer meme spesifik bir olaya (ör: 2024 olimpiyatları) dayanıyorsa."
+    )
+
+# ==========================================
+# ANNOTATION ŞEMALARI
+# ==========================================
+
 class AnnotationDraftRequest(BaseModel):
     surum: int  # Frontend'in elindeki son sürüm (Çakışma kontrolü için)
-    icerik: Dict[str, Any]
+    icerik: AnnotationIcerik
 
 class AnnotationSubmitRequest(BaseModel):
     surum: int
@@ -50,7 +81,7 @@ class AnnotationResponse(BaseModel):
     durum_kodu: str
     kalibrasyon: bool
     surum: int
-    icerik: Dict[str, Any]
+    icerik: AnnotationIcerik
     revizyon_notu: Optional[str]
     gonderme_zamani: Optional[datetime]
 
