@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import models  # noqa: F401  (tabloların tanınması için gerekli)
 from app.database import create_db_and_tables
 from app.errors import ApiHatasi, api_hatasi_handler
-from app.routes import auth, users
+from app.routes import auth, users, annotations, search
 
 
 @asynccontextmanager
@@ -36,6 +36,8 @@ app.add_middleware(
 app.add_exception_handler(ApiHatasi, api_hatasi_handler)
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(annotations.router)
+app.include_router(search.router) # Yeni eklenen satır
 
 
 @app.get("/api/v1/health")
