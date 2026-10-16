@@ -1,5 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field
-
+from typing import Optional, Dict, Any
+from datetime import datetime
 
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -34,3 +35,52 @@ class LoginResponse(BaseModel):
     token_tipi: str = "bearer"
     sure_sn: int
     kullanici: UserOut
+
+class AnnotationDraftRequest(BaseModel):
+    surum: int  # Frontend'in elindeki son sürüm (Çakışma kontrolü için)
+    icerik: Dict[str, Any]
+
+class AnnotationSubmitRequest(BaseModel):
+    surum: int
+
+class AnnotationResponse(BaseModel):
+    id: str
+    meme_id: str
+    annotator_id: str
+    durum_kodu: str
+    kalibrasyon: bool
+    surum: int
+    icerik: Dict[str, Any]
+    revizyon_notu: Optional[str]
+    gonderme_zamani: Optional[datetime]
+
+# ==========================================
+# COMMENT (YORUM) ŞEMALARI
+# ==========================================
+
+class CommentCreate(BaseModel):
+    metin: str = Field(min_length=1)
+    tur: str = "soru" # soru, kilavuz_onerisi, hata
+
+class CommentResponse(BaseModel):
+    id: str
+    meme_id: str
+    yazan_id: str
+    metin: str
+    tur: str
+    cozuldu: bool
+    zaman: datetime
+
+# ==========================================
+# RATING (PUANLAMA) ŞEMALARI
+# ==========================================
+
+class RatingCreate(BaseModel):
+    puan: int = Field(ge=1, le=5)
+
+class RatingResponse(BaseModel):
+    id: str
+    annotation_id: str
+    veren_id: str
+    puan: int
+    zaman: datetime
