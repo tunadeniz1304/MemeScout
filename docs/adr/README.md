@@ -9,14 +9,17 @@ Bir karar değişirse eski kaydı silmeyin; durumunu "Yerini aldı: ADR-NNNN" ya
 
 | No | Karar | Durum |
 |---|---|---|
-| [0001](0001-api-contract-tek-kaynak.md) | API contract tek doğru kaynak | Önerildi |
-| [0002](0002-sizinti-kurali-reviewer-dahil.md) | Sızıntı kuralı gold kayda katkı veren herkesi kapsar | Önerildi |
-| [0003](0003-kor-etiketlemede-yorumlar-gizli.md) | Kör etiketleme yorumları da kapsar | Önerildi |
-| [0004](0004-uyari-null-ve-bos-liste.md) | `uyari` alanında `null` ve `[]` ayrımı | Önerildi |
-| [0005](0005-annotation-ek-alanlari.md) | Annotation'a `kalibrasyon`, `surum`, `revizyon_notu` alanları | Önerildi |
-| [0006](0006-gold-annotator-liste.md) | `gold.jsonl`'de `annotator` alanı liste | Önerildi |
-| [0007](0007-ek-api-islemleri.md) | Dokümanda olmayan ek API işlemleri | Önerildi |
-| [0008](0008-etiket-sistem-adlari.md) | Etiketlerin sistem adları | Önerildi (karar bekliyor) |
+| [0001](0001-api-contract-tek-kaynak.md) | API contract tek doğru kaynak | Kabul edildi |
+| [0002](0002-sizinti-kurali-reviewer-dahil.md) | Sızıntı kuralı gold kayda katkı veren herkesi kapsar | Kabul edildi |
+| [0003](0003-kor-etiketlemede-yorumlar-gizli.md) | Kör etiketleme yorumları da kapsar | Kabul edildi |
+| [0004](0004-uyari-null-ve-bos-liste.md) | `uyari` alanında `null` ve `[]` ayrımı | Kabul edildi |
+| [0005](0005-annotation-ek-alanlari.md) | Annotation'a `kalibrasyon`, `surum`, `revizyon_notu` alanları | Kabul edildi |
+| [0006](0006-gold-annotator-liste.md) | `gold.jsonl`'de `annotator` alanı liste | Kabul edildi |
+| [0007](0007-ek-api-islemleri.md) | Dokümanda olmayan ek API işlemleri | Kabul edildi |
+| [0008](0008-etiket-sistem-adlari.md) | Etiketlerin sistem adları | Kabul edildi |
+| [0014](0014-tek-etiketli-memelerde-ikinci-bakis.md) | Tek etiketli meme'lerde hafif ikinci bakış | Kabul edildi |
+
+0009–0013 numaraları daha önce kullanıldığı için tekrar verilmez.
 
 ## Şablon
 

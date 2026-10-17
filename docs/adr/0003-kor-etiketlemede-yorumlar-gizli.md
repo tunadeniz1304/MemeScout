@@ -1,6 +1,6 @@
 # ADR-0003: Kör etiketleme yorumları da kapsar
 
-- **Durum:** Önerildi
+- **Durum:** Kabul edildi
 - **Tarih:** 2026-10-15
 - **İlgili:** `annotation.md` §3.5, §4.3, `openapi.yaml` `GET /memes/{meme_id}/comments`
 

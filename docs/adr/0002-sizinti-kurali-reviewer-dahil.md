@@ -1,6 +1,6 @@
 # ADR-0002: Sızıntı kuralı gold kayda katkı veren herkesi kapsar
 
-- **Durum:** Önerildi
+- **Durum:** Kabul edildi
 - **Tarih:** 2026-10-15
 - **İlgili:** `annotation.md` §3.7, `architecture.md` §3.2, `openapi.yaml` `POST /test-queries`
 

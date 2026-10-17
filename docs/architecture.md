@@ -58,12 +58,17 @@ anahtar_kelimeler:              # 3–8 adet, düz Türkçe; BM25'te kullanılı
   - "hayırdır"
   - "şüpheli bakış"
   - "işkillenmek"
-duygu: [suphe, saskinlik]       # sabit listeden (bkz. 3.1)
-niyet: [tepki]                  # sabit listeden
+duygu: [suphe, saskinlik]       # sabit listeden, sistem adlarıyla (bkz. 3.1)
+niyet: [tepki_gosterme]         # sabit listeden
 mekanizma: [ironi]              # sabit listeden
-uyari: []                       # politik | kaba | hassas
+uyari: []                       # politik | kaba_argo | hassas; [] = "uyarı yok" onayı
 notlar: ""
-annotator: "<etiketleyen>"
+
+# --- Kayıt bilgisi (gold.jsonl) ---
+annotator: ["a1"]               # takma adla liste; çift etiketli meme'de iki kişi
+reviewer: "a2"                  # onaylayan kişi; tek etiketli meme'de ikinci bakışı yapan
+sema_versiyonu: "1.0"
+etiket_listesi_versiyonu: "1.0"
 
 # --- Opsiyonel, annotation sonrası denenecek ---
 ocr_metin: null                 # görseldeki yazı
@@ -73,7 +78,7 @@ gecmis_sorgular: null           # kullanıcı seçimlerinden (ileride)
 
 ### 3.1 Etiket Listeleri (taslak)
 
-Listeler etiketleme kılavuzunda her biri için kısa tanım ve örnekle birlikte sabitlenecek.
+Listeler etiketleme kılavuzunda her biri için kısa tanım ve örnekle birlikte sabitlenecek. Her etiketin değişmeyen bir sistem adı (küçük harf, Türkçe karaktersiz, boşluk yerine alt çizgi: `tepki_gosterme`) ve ekranda görünen bir adı ("Tepki gösterme") vardır ([ADR-0008](adr/0008-etiket-sistem-adlari.md)). Eğik çizgili etiketler tek kavramdır ve birleşik adla tutulur: `sevinc_zafer`, `ustunluk_kibir`, `sikayet_isyan`, `kaba_argo`.
 
 | Alan | Etiketler |
 | --- | --- |
@@ -91,7 +96,8 @@ Uyarı etiketi filtreleme için değil, sadece işaretleme için kullanılır.
 - `vlm_aciklama` yalnızca görselde görüneni anlatır. Duygu, yorum ve kullanım bağlamı anlam alanlarına yazılır.
 - `anahtar_kelimeler` düz Türkçe ve Türkçe karakterle yazılır: meme'in bilinen adı, replik, karakter, görünen nesne, argo karşılıklar. Hashtag ya da bitişik yazım kullanılmaz ("#hayalkirikligi" değil, "hayal kırıklığı").
 - Meme'lerin bir alt kümesi iki kişiye ayrı ayrı etiketletilir ve uyum ölçülür (tek etiketli alanlarda Cohen's kappa, çok etiketli alanlarda Krippendorff's alpha).
-- Test sorgularını, o meme'lerin örnek durumlarını yazan kişiler yazmaz. Bu, sonuçların olduğundan iyi görünmesini önler.
+- Kalan meme'leri tek kişi etiketler; onları etiketlemeyen bir reviewer da hafif bir ikinci bakışla kontrol eder ([ADR-0014](adr/0014-tek-etiketli-memelerde-ikinci-bakis.md)). Böylece her meme en az iki kişiden geçer.
+- Test sorgularını, o meme'lerin gold kaydına katkı veren kişiler (annotator'lar ve reviewer) yazmaz. Bu, sonuçların olduğundan iyi görünmesini önler ([ADR-0002](adr/0002-sizinti-kurali-reviewer-dahil.md)).
 
 ## 4. Sorgu Akışı
 

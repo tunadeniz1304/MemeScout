@@ -1,6 +1,8 @@
 # MemeScout — Annotation Platformu
 
 > Durum: Taslak. İçerik şemasının anlamı için [architecture.md](architecture.md) dokümanına bakın. Bu doküman platformun hangi verileri tutacağını, etiketleme sürecini ve platformdan beklenen özellikleri tanımlar.
+>
+> Frontend ile backend arasındaki istek ve cevapların tek doğru kaynağı [openapi.yaml](../annotation-platform/openapi.yaml) dosyasıdır ([ADR-0001](adr/0001-api-contract-tek-kaynak.md)). Form doğrulama kuralları backend'den `GET /schema/annotation` ile gelir. Bir değişiklik gerekirse önce sözleşme PR ile güncellenir, sonra kod.
 
 ## 1. Amaç ve Kapsam
 
@@ -15,10 +17,10 @@
 | Rol | Yetki |
 | --- | --- |
 | **Annotator** | Kendisine atanan meme'leri etiketler, yorum ve işaret bırakır |
-| **Reviewer** | Çift etiketlenen meme'lerde anlaşmazlıkları çözer, gold kaydı onaylar |
+| **Reviewer** | Çift etiketlenen meme'lerde anlaşmazlıkları çözer, tek etiketlenen meme'lere ikinci bakış yapar, gold kaydı onaylar |
 | **Admin** | Meme yükler, atama yapar, etiket listelerini yönetir, dışa aktarım alır |
 
-4 kişilik ekipte herkes annotator'dır. Reviewer rolü dönüşümlü verilir: bir meme'in reviewer'ı, o meme'i etiketleyen iki kişiden biri olamaz.
+4 kişilik ekipte herkes annotator'dır. Reviewer rolü dönüşümlü verilir: bir meme'in reviewer'ı, o meme'i etiketleyen kişilerden biri olamaz.
 
 ## 3. Veri Modeli
 
@@ -69,7 +71,7 @@ Her meme–annotator çifti için ayrı bir kayıt tutulur. Alanların anlamı [
 | `duygu` | etiket listesi | ✓ | 1–3 etiket, sabit listeden |
 | `niyet` | etiket listesi | ✓ | 1–3 etiket, sabit listeden |
 | `mekanizma` | etiket listesi | ✓ | 1–3 etiket, sabit listeden |
-| `uyari` | etiket listesi | | Boş olabilir. Boş bırakmak bilinçli bir seçimdir ("uyarı yok" onayı) |
+| `uyari` | etiket listesi | ✓ | Cevaplanması zorunlu ([ADR-0004](adr/0004-uyari-null-ve-bos-liste.md)): `null` henüz cevaplanmadı demektir ve gönderilemez; `[]` bilinçli "uyarı yok" onayıdır |
 | `notlar` | metin | | Serbest not. En fazla 500 karakter |
 
 Üst sınırlar başlangıç değeridir; kalibrasyon turundan sonra gözden geçirilir.
@@ -90,8 +92,11 @@ Her meme–annotator çifti için ayrı bir kayıt tutulur. Alanların anlamı [
 | `sema_versiyonu` | string | Hangi şema versiyonuyla etiketlendi |
 | `etiket_listesi_versiyonu` | string | Hangi etiket listesi versiyonuyla etiketlendi |
 | `cift_etiket` | bool | Uyum ölçümü için çift etiketlenen alt kümede mi |
+| `kalibrasyon` | bool | Kalibrasyon turuna ait annotation. Uyum hesaplarına katılmaz ([ADR-0005](adr/0005-annotation-ek-alanlari.md)) |
+| `surum` | int | Her taslak kaydında artar. İstemci son bildiği sürümü gönderir; eşleşmezse backend `409 SURUM_CAKISMASI` döner. Aynı annotation iki sekmede açıksa veri kaybını önler |
+| `revizyon_notu` | metin | Reviewer ya da admin revizyon isterken yazdığı not; annotator'ın kuyruğunda görünür |
 
-`tanidiklik` ve `alan_guveni` önemli: Kültürel bağlamı bilmeyen birinin etiketi, bilen birininkiyle aynı ağırlıkta olmamalı. Tanıdıklık skoru 1 veya 2 olan meme başka birine yeniden atanır.
+`tanidiklik` ve `alan_guveni` önemli: Kültürel bağlamı bilmeyen birinin etiketi, bilen birininkiyle aynı ağırlıkta olmamalı. Tanıdıklık skoru 1 veya 2 olan annotation gönderilemez; atlanır ve başka birine yeniden atanır.
 
 ### 3.4 Gold kayıt
 
@@ -101,11 +106,13 @@ Her meme için bir tane. Arama sisteminin kullandığı kayıt budur.
 | --- | --- |
 | İçerik alanları | §3.2 ile aynı yapı |
 | `kaynak_annotationlar` | Gold kaydın hangi annotation'lardan türetildiği |
-| `reviewer` | Onaylayan kişi (çift etiketli meme'lerde) |
+| `annotator` | Kaynak annotation'ların sahipleri, takma adla liste (ör. `["a1", "a3"]`). Tek etiketli meme'de tek elemanlı liste ([ADR-0006](adr/0006-gold-annotator-liste.md)) |
+| `reviewer` | Onaylayan kişi. Tek etiketli meme'lerde ikinci bakışı yapan kişidir ([ADR-0014](adr/0014-tek-etiketli-memelerde-ikinci-bakis.md)) |
+| `sema_versiyonu`, `etiket_listesi_versiyonu` | Kaydın hangi şema ve etiket listesi versiyonuyla oluşturulduğu |
 | `cozum_notu` | Anlaşmazlık nasıl çözüldü |
 | `onay_zamani` | |
 
-Tek etiketlenen meme'lerde gold kayıt doğrudan o annotation'dan oluşur.
+Tek etiketlenen meme'lerde gold kayıt o annotation'dan oluşur ve reviewer'ın ikinci bakışıyla kesinleşir.
 
 ### 3.5 Yorum ve işaret
 
@@ -125,7 +132,7 @@ Duygu, niyet, mekanizma ve uyarı listeleri platformda **versiyonlu** tutulur.
 | Alan | Açıklama |
 | --- | --- |
 | `alan` | duygu, niyet, mekanizma, uyari |
-| `etiket` | ör. `bikkinlik` |
+| `etiket` | Sistem adı: küçük harf, Türkçe karaktersiz, boşluk yerine alt çizgi (ör. `bikkinlik`, `tepki_gosterme`; [ADR-0008](adr/0008-etiket-sistem-adlari.md)) |
 | `gorunen_ad` | ör. "Bıkkınlık" |
 | `tanim` | Kılavuzdaki kısa tanım |
 | `ornekler` | 1–2 örnek meme |
@@ -146,7 +153,7 @@ Değerlendirme seti (~100 sorgu) de platformda tutulur.
 | `zaman` | |
 | `parafraz_grubu` | Opsiyonel. Aynı durumun farklı yazımları aynı grup kimliğini taşır ve aynı `dogru_memeler` listesini paylaşır ([architecture.md §6](architecture.md#6-değerlendirme), parafraz alt kümesi) |
 
-**Sızıntı kuralı:** Bir kişi, `ornek_durumlar` alanını kendisinin yazdığı meme'leri doğru cevap olarak gösteren test sorgusu yazamaz. Platform bunu `yazan` ve `annotator` alanlarını karşılaştırarak engeller.
+**Sızıntı kuralı ([ADR-0002](adr/0002-sizinti-kurali-reviewer-dahil.md)):** Test sorgusunu yazan kişi, doğru cevap olarak gösterdiği meme'lerin gold kaydına katkı veren hiç kimse olamaz: kaynak annotation'ların sahipleri ve reviewer. Platform ihlalde `422 SIZINTI` döner ve sorunlu meme'leri listeler. Aynı `parafraz_grubu`'ndaki varyantlar için de kural aynıdır. Mümkünse sorguları ekip dışından biri yazar; bu, kuraldan daha güçlü bir korumadır.
 
 ### 3.8 Denetim kaydı
 
@@ -157,12 +164,13 @@ Her değişiklik için: kim, ne zaman, hangi kayıt, hangi alan, eski değer, ye
 ### 4.1 Aşamalar
 
 1. **Kılavuz:** Etiket tanımları ve örneklerle etiketleme kılavuzu yazılır.
-2. **Kalibrasyon turu:** 4 kişinin hepsi aynı 10–15 meme'i etiketler. Sonuçlar birlikte tartışılır ve kılavuz güncellenir. Bu turun etiketleri uyum ölçümüne katılmaz.
+2. **Kalibrasyon turu:** 4 kişinin hepsi aynı 10–15 meme'i etiketler. Sonuçlar birlikte tartışılır ve kılavuz güncellenir. Bu turun etiketleri `kalibrasyon` ile işaretlenir ve uyum ölçümüne katılmaz.
 3. **Ana etiketleme:** 300 meme 4 kişiye bölünür, kişi başı ~75 meme.
-4. **Çift etiketleme:** Meme'lerin ~%20'si (~60 meme) ikinci bir kişiye de atanır. 4 kişiden 6 farklı ikili çıkar, her ikiliye ~10 meme düşer. Böylece uyum, kişiden bağımsız ölçülür.
+4. **Çift etiketleme:** Meme'lerin ~%20'si (~60 meme) ikinci bir kişiye de atanır. 4 kişiden 6 farklı ikili çıkar, her ikiliye ~10 meme düşer. Böylece uyum, kişiden bağımsız ölçülür. İlk yarısı (~30 meme) bittiğinde ara uyum ölçümü yapılır (§6).
 5. **Uyum ölçümü ve çözüm:** Anlaşmazlıkları üçüncü bir kişi (reviewer) çözer.
-6. **Test seti:** Sızıntı kuralına uyularak ~100 test sorgusu yazılır. Bunlardan 20'si için 2'şer parafraz varyantı eklenir (§3.7, `parafraz_grubu`).
-7. **Dışa aktarım:** Gold kayıtlar arama sistemine aktarılır.
+6. **İkinci bakış:** Tek etiketlenen meme'leri, onları etiketlemeyen bir reviewer hızlıca kontrol eder; onaylar ya da `revizyon_notu` ile geri gönderir ([ADR-0014](adr/0014-tek-etiketli-memelerde-ikinci-bakis.md)). Bu kontrol uyum ölçümüne katılmaz.
+7. **Test seti:** Sızıntı kuralına uyularak ~100 test sorgusu yazılır. Bunlardan 20'si için 2'şer parafraz varyantı eklenir (§3.7, `parafraz_grubu`).
+8. **Dışa aktarım:** Gold kayıtlar arama sistemine aktarılır.
 
 ### 4.2 Annotation durumları
 
@@ -173,9 +181,13 @@ atanmadi → atandi → devam_ediyor → gonderildi ─┬─► onaylandi
                     atlandi (tanımıyorum / uygun değil)
 ```
 
+Revizyonu reviewer ya da admin `revizyon_notu` ile ister (`gonderildi → revizyon_gerekli`). Atlanan ya da tanıdıklığı düşük annotation'ı admin başka birine yeniden atar ([ADR-0007](adr/0007-ek-api-islemleri.md)).
+
 ### 4.3 Kör etiketleme
 
 Çift etiketlenen meme'lerde iki kişi de göndermeden önce birbirinin etiketini göremez. Aksi halde ikinci kişi ilkinden etkilenir ve uyum olduğundan yüksek çıkar.
+
+Kural yorumları da kapsar ([ADR-0003](adr/0003-kor-etiketlemede-yorumlar-gizli.md)): iki annotation da `gonderildi` olana kadar bir annotator, diğerinin o meme'e bıraktığı yorumları göremez. Admin ve reviewer bütün yorumları görür. Genel sorular meme'e değil ekip kanalına sorulur ya da kılavuza ekleme önerisi olarak yazılır. VLM taslağı iki kişiye de aynı gelir; diğer annotator'ın çıktısı olmadığı için kör etiketlemeyi bozmaz.
 
 ## 5. Platformdan Beklenen Özellikler
 
@@ -188,15 +200,21 @@ atanmadi → atandi → devam_ediyor → gonderildi ─┬─► onaylandi
 - Alan bazında "emin değilim" işareti
 - Klavye kısayolları (sonraki meme, kaydet, gönder)
 - Doğrulama kuralları ihlal edilirse gönderme engellenir ve sebebi gösterilir
+- Göndermeden önce eksikleri gösteren "Doğrula" butonu
+- Uyarı etiketlerinin yanında ayrı bir "Uyarı yok" onay kutusu
 
 **Yönetim ve takip**
 - İlerleme panosu: kişi başı tamamlanan, kalan, atlanan, ortalama süre
 - Uyum panosu: alan bazında uyum skorları ve en çok anlaşmazlık çıkan etiketler
 - Anlaşmazlık ekranı: iki annotation yan yana, reviewer seçer ya da birleştirir
+- İkinci bakış kuyruğu: reviewer'a düşen tek etiketli kayıtlar; onayla ya da notla geri gönder
 - Kopya uyarısı: yüklenen dosyanın `sha256` değeri mevcut bir meme'le aynıysa yüklemeyi engelle
+- Otomatik dağıtım: atanmamış meme'leri annotator'lara eşit böler, ~%20'sini ikinci bir kişiye de atar ve ikinci atamaları ikililere dengeli dağıtır. Önce plan görülebilir. İlk sürümde olmayabilir
+- Yeniden atama: atlanan ya da tanıdıklığı düşük annotation başka birine atanır
+- Revizyon isteme: reviewer ya da admin, gönderilmiş bir annotation için notla revizyon ister. İlk sürümde olmayabilir
 
 **Dışa aktarım**
-- `gold.jsonl`: Meme başına bir satır gold kayıt, architecture.md şemasında
+- `gold.jsonl`: Meme başına bir satır gold kayıt, architecture.md şemasında. `annotator` ve `uyari` her zaman listedir (`null` olmaz)
 - `annotations_raw.jsonl`: Tüm ham annotation'lar ve süreç bilgisi (uyum analizi için)
 - `test_set.jsonl`: Test sorguları
 - Dışa aktarımda annotator kimlikleri takma adla (`a1`–`a4`) yazılır
@@ -209,4 +227,4 @@ atanmadi → atandi → devam_ediyor → gonderildi ─┬─► onaylandi
 | Çok etiketli alanlar (`duygu`, `niyet`, `mekanizma`, `uyari`) | Krippendorff's alpha (MASI mesafesiyle) veya etiket bazında kappa |
 | Serbest metin (`durum`, `kulturel_bilgi`, `vlm_aciklama`, `anahtar_kelimeler`) | Sayısal ölçüm yerine reviewer'ın "aynı anlamı taşıyor mu" değerlendirmesi |
 
-Bir etikette uyum düşük çıkarsa (kabaca kappa < 0,4), o etiketin tanımı kılavuzda netleştirilir ya da etiket başka bir etiketle birleştirilir.
+Bir etikette uyum düşük çıkarsa (kabaca kappa < 0,4), o etiketin tanımı kılavuzda netleştirilir ya da etiket başka bir etiketle birleştirilir. Ara ölçümde (§4.1) düşük çıkan alanlar, ikinci bakışta tek etiketli meme'lerde özellikle kontrol edilir. Kılavuz güncellemesinden sonra da düşük kalırsa kalan meme'lerde çift etiketleme oranı artırılır (ör. %20'den %40'a).
