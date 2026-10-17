@@ -1,6 +1,6 @@
 # ADR-0008: Etiketlerin sistem adları
 
-- **Durum:** Önerildi (karar bekliyor)
+- **Durum:** Kabul edildi
 - **Tarih:** 2026-10-15
 - **İlgili:** `architecture.md` §3, §3.1, `annotation.md` §3.6
 
@@ -25,3 +25,7 @@ Sistem adları sabitlenmeden etiketleme başlarsa, sonradan değiştirmek tüm k
 - Etiketleme kılavuzu yazılırken her etiketin sistem adı, görünen adı ve tanımı tek tabloda kesinleşmeli.
 - `architecture.md` §3 örneği kesinleşen adlarla güncellenmeli.
 - Bu karar, backend'de etiketleme ekranı endpoint'leri yazılmadan önce verilmeli.
+
+## Karar (2026-10-18)
+
+Önerilen karar kabul edildi. Eğik çizgili etiketler tek kavram olarak birleşik sistem adıyla tutulur: `sevinc_zafer`, `ustunluk_kibir`, `sikayet_isyan`, `kaba_argo`. `architecture.md` §3.1 ve §3'teki örnek kayıt bu adlarla güncellendi.

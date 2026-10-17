@@ -1,6 +1,6 @@
 # ADR-0007: Dokümanda olmayan ek API işlemleri
 
-- **Durum:** Önerildi
+- **Durum:** Kabul edildi
 - **Tarih:** 2026-10-15
 - **İlgili:** `annotation.md` §4, §5, `openapi.yaml`
 

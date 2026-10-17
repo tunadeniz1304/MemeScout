@@ -1,8 +1,9 @@
 # ADR-0006: `gold.jsonl`'de `annotator` alanı liste
 
-- **Durum:** Önerildi
+- **Durum:** Kabul edildi
 - **Tarih:** 2026-10-15
 - **İlgili:** `architecture.md` §3, `annotation.md` §3.4, §5, `openapi.yaml` `GoldExportRow`
+- **Not:** Tek etiketli meme'de `reviewer` kuralı [ADR-0014](0014-tek-etiketli-memelerde-ikinci-bakis.md) ile değişti; artık her gold kaydında dolu.
 
 ## Bağlam
 

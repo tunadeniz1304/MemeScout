@@ -1,6 +1,6 @@
 # ADR-0005: Annotation'a `kalibrasyon`, `surum` ve `revizyon_notu` alanları
 
-- **Durum:** Önerildi
+- **Durum:** Kabul edildi
 - **Tarih:** 2026-10-15
 - **İlgili:** `annotation.md` §3.3, §4.1, §4.2, `openapi.yaml` `Annotation`
 

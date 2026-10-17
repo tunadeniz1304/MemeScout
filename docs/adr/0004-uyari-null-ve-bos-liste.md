@@ -1,6 +1,6 @@
 # ADR-0004: `uyari` alanında `null` ve `[]` ayrımı
 
-- **Durum:** Önerildi
+- **Durum:** Kabul edildi
 - **Tarih:** 2026-10-15
 - **İlgili:** `annotation.md` §3.2, `openapi.yaml` `AnnotationContent.uyari`
 

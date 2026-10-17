@@ -1,6 +1,6 @@
 # ADR-0001: API contract tek doğru kaynak
 
-- **Durum:** Önerildi
+- **Durum:** Kabul edildi
 - **Tarih:** 2026-10-15
 - **İlgili:** `annotation-platform/openapi.yaml`, `annotation.md`
 
