@@ -1,4 +1,4 @@
-# ADR-0014: Tek etiketli meme'lerde hafif ikinci bakış
+# ADR-0009: Tek etiketli meme'lerde hafif ikinci bakış
 
 - **Durum:** Kabul edildi
 - **Tarih:** 2026-10-18

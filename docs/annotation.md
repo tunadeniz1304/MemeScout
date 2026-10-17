@@ -107,7 +107,7 @@ Her meme için bir tane. Arama sisteminin kullandığı kayıt budur.
 | İçerik alanları | §3.2 ile aynı yapı |
 | `kaynak_annotationlar` | Gold kaydın hangi annotation'lardan türetildiği |
 | `annotator` | Kaynak annotation'ların sahipleri, takma adla liste (ör. `["a1", "a3"]`). Tek etiketli meme'de tek elemanlı liste ([ADR-0006](adr/0006-gold-annotator-liste.md)) |
-| `reviewer` | Onaylayan kişi. Tek etiketli meme'lerde ikinci bakışı yapan kişidir ([ADR-0014](adr/0014-tek-etiketli-memelerde-ikinci-bakis.md)) |
+| `reviewer` | Onaylayan kişi. Tek etiketli meme'lerde ikinci bakışı yapan kişidir ([ADR-0009](adr/0009-tek-etiketli-memelerde-ikinci-bakis.md)) |
 | `sema_versiyonu`, `etiket_listesi_versiyonu` | Kaydın hangi şema ve etiket listesi versiyonuyla oluşturulduğu |
 | `cozum_notu` | Anlaşmazlık nasıl çözüldü |
 | `onay_zamani` | |
@@ -168,7 +168,7 @@ Her değişiklik için: kim, ne zaman, hangi kayıt, hangi alan, eski değer, ye
 3. **Ana etiketleme:** 300 meme 4 kişiye bölünür, kişi başı ~75 meme.
 4. **Çift etiketleme:** Meme'lerin ~%20'si (~60 meme) ikinci bir kişiye de atanır. 4 kişiden 6 farklı ikili çıkar, her ikiliye ~10 meme düşer. Böylece uyum, kişiden bağımsız ölçülür. İlk yarısı (~30 meme) bittiğinde ara uyum ölçümü yapılır (§6).
 5. **Uyum ölçümü ve çözüm:** Anlaşmazlıkları üçüncü bir kişi (reviewer) çözer.
-6. **İkinci bakış:** Tek etiketlenen meme'leri, onları etiketlemeyen bir reviewer hızlıca kontrol eder; onaylar ya da `revizyon_notu` ile geri gönderir ([ADR-0014](adr/0014-tek-etiketli-memelerde-ikinci-bakis.md)). Bu kontrol uyum ölçümüne katılmaz.
+6. **İkinci bakış:** Tek etiketlenen meme'leri, onları etiketlemeyen bir reviewer hızlıca kontrol eder; onaylar ya da `revizyon_notu` ile geri gönderir ([ADR-0009](adr/0009-tek-etiketli-memelerde-ikinci-bakis.md)). Bu kontrol uyum ölçümüne katılmaz.
 7. **Test seti:** Sızıntı kuralına uyularak ~100 test sorgusu yazılır. Bunlardan 20'si için 2'şer parafraz varyantı eklenir (§3.7, `parafraz_grubu`).
 8. **Dışa aktarım:** Gold kayıtlar arama sistemine aktarılır.
 
