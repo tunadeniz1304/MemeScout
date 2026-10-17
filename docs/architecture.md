@@ -96,7 +96,7 @@ Uyarı etiketi filtreleme için değil, sadece işaretleme için kullanılır.
 - `vlm_aciklama` yalnızca görselde görüneni anlatır. Duygu, yorum ve kullanım bağlamı anlam alanlarına yazılır.
 - `anahtar_kelimeler` düz Türkçe ve Türkçe karakterle yazılır: meme'in bilinen adı, replik, karakter, görünen nesne, argo karşılıklar. Hashtag ya da bitişik yazım kullanılmaz ("#hayalkirikligi" değil, "hayal kırıklığı").
 - Meme'lerin bir alt kümesi iki kişiye ayrı ayrı etiketletilir ve uyum ölçülür (tek etiketli alanlarda Cohen's kappa, çok etiketli alanlarda Krippendorff's alpha).
-- Kalan meme'leri tek kişi etiketler; onları etiketlemeyen bir reviewer da hafif bir ikinci bakışla kontrol eder ([ADR-0014](adr/0014-tek-etiketli-memelerde-ikinci-bakis.md)). Böylece her meme en az iki kişiden geçer.
+- Kalan meme'leri tek kişi etiketler; onları etiketlemeyen bir reviewer da hafif bir ikinci bakışla kontrol eder ([ADR-0009](adr/0009-tek-etiketli-memelerde-ikinci-bakis.md)). Böylece her meme en az iki kişiden geçer.
 - Test sorgularını, o meme'lerin gold kaydına katkı veren kişiler (annotator'lar ve reviewer) yazmaz. Bu, sonuçların olduğundan iyi görünmesini önler ([ADR-0002](adr/0002-sizinti-kurali-reviewer-dahil.md)).
 
 ## 4. Sorgu Akışı
