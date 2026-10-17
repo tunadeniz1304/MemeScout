@@ -26,20 +26,20 @@ Türkçe konuşmayı anlayan, neden o meme'i seçtiğini açıklayan agentic bir
 ## Mimari
 - **Router Agent:** Girdi durum/konuşma mı, meme tarifi mi olduğunu belirler.
 - **Context Agent:** Konuşmadan ya da durumdan duygu, ton ve niyeti çıkarıp arama sorgusuna çevirir.
-- **Retrieval Agent:** Vektör DB'de hybrid arama yapar (template görseli + VLM açıklaması + "ne zaman kullanılır" metni) ve re-rank eder.
+- **Retrieval Agent:** Vektör DB'de hybrid arama yapar (VLM'in görsel tarifi + anahtar kelimeler + "ne zaman kullanılır" metni) ve re-rank eder.
 - **Refine döngüsü:** Sonuç zayıfsa ya da kullanıcı geri bildirim verirse sorguyu yeniden yazıp tekrar arar.
 - **Explain + Label adımı:** Her sonuca "neden bu meme" açıklaması ve gerekirse içerik uyarı etiketi ekler.
 
 ## Teknoloji
 - Agent'lar: Python (LangGraph veya benzeri)
 - LLM / VLM: API tabanlı (Türkçe performansı iyi bir model)
-- Embedding + Vector DB: Çok dilli text embedding + CLIP, Chroma veya Qdrant
+- Embedding + Vector DB: Çok dilli text embedding, Chroma veya Qdrant (CLIP aramada kullanılmaz, yalnızca veri toplarken kopya tespiti için)
 - ReRanker
 - Frontend: Serbest (Streamlit veya React)
 
 ## Veri
 - Birkaç yüz(belki bin) Türk meme template'i (elle toplanacak) + popüler uluslararası template'ler (Imgflip, MemeMatch dataset)
-- Her template için VLM ile üretilmiş Türkçe açıklama, kullanım bağlamı, ton ve hassasiyet bilgisi
+- Her template için insanın yazdığı Türkçe kullanım bağlamı, duygu/niyet etiketleri ve hassasiyet (uyarı) bilgisi. Görsel tarifin taslağını VLM üretir, insan düzeltir.
 
 ## Değerlendirme
 - 50–100 Türkçe durum/konuşma için elle hazırlanmış "kabul edilebilir meme'ler" listesi
