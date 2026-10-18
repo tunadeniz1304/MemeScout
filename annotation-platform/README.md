@@ -46,3 +46,32 @@ atandi / devam_ediyor → atlandi
 | `POST /reviews/{meme_id}/gold` | gonderildi → onaylandi |
 
 Geçersiz geçişlerde 409 `GECERSIZ_DURUM_GECISI` döner.
+
+
+## Gereksinimler ve Kurulum
+Proje bağımlılıkları iki dosyada tutulur:
+- **requirements.txt**: Uygulamanın çalışması için temel paketler
+- **requirements-dev.txt**: Geliştirme ve test için ek paketler
+### requirements.txt
+
+fastapi uvicorn[standard] sqlmodel python-multipart pyjwt pwdlib[argon2] python-dotenv requests pytest httpx
+
+
+
+### requirements-dev.txt
+
+pytest pytest-asyncio httpx coverage
+
+
+
+---
+## Testler
+Test komutları:
+- Geliştirme bağımlılıkları yüklü ise testleri çalıştırmak için:
+```bash
+pytest tests/
+Örtük asenkron testler için pytest-asyncio yüklü olmalıdır.
+Not: Testler ve geliştirme ortamı için requirements-dev.txt dosyasındaki paketleri yüklemek önemlidir.
+
+
+
