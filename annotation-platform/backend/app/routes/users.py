@@ -9,14 +9,12 @@ from app.security import admin_kullanici, aktif_kullanici, sifre_hashle
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
-
 @router.get("", response_model=list[UserOut])
 def kullanicilari_listele(
     session: Session = Depends(get_session),
     _: User = Depends(aktif_kullanici),
 ):
     return session.exec(select(User)).all()
-
 
 @router.post("", response_model=UserOut, status_code=201)
 def kullanici_olustur(

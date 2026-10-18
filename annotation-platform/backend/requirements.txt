@@ -4,3 +4,7 @@ sqlmodel
 python-multipart
 pyjwt
 pwdlib[argon2]
+python-dotenv
+requests
+pytest
+httpx

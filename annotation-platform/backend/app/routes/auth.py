@@ -7,8 +7,9 @@ from app.models import User
 from app.schemas import LoginRequest, LoginResponse, RegisterRequest, UserOut
 from app.security import TOKEN_SURESI_SN, aktif_kullanici, sifre_dogru_mu, sifre_hashle, token_olustur
 
-router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+import uuid
 
+router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 @router.post("/register", response_model=LoginResponse, status_code=201)
 def register(istek: RegisterRequest, session: Session = Depends(get_session)):
@@ -17,9 +18,6 @@ def register(istek: RegisterRequest, session: Session = Depends(get_session)):
     ).first()
     if mevcut is not None:
         raise ApiHatasi(409, "CAKISMA", "Bu kullanıcı adı zaten kullanılıyor.")
-
-    # Public registrations are always ordinary annotators; admin status is never accepted here.
-    import uuid
 
     kullanici = User(
         kullanici_adi=istek.kullanici_adi,
@@ -37,7 +35,6 @@ def register(istek: RegisterRequest, session: Session = Depends(get_session)):
         kullanici=UserOut.model_validate(kullanici),
     )
 
-
 @router.post("/login", response_model=LoginResponse)
 def login(istek: LoginRequest, session: Session = Depends(get_session)):
     kullanici = session.exec(
@@ -50,7 +47,6 @@ def login(istek: LoginRequest, session: Session = Depends(get_session)):
         sure_sn=TOKEN_SURESI_SN,
         kullanici=UserOut.model_validate(kullanici),
     )
-
 
 @router.get("/me", response_model=UserOut)
 def me(kullanici: User = Depends(aktif_kullanici)):

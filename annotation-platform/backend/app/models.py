@@ -3,14 +3,11 @@ from uuid import uuid4
 
 from sqlmodel import Field, SQLModel
 
-
 def simdi():
     return datetime.now(timezone.utc)
 
-
 def yeni_id():
     return uuid4().hex
-
 
 class User(SQLModel, table=True):
     id: str = Field(default_factory=yeni_id, primary_key=True)
@@ -19,7 +16,6 @@ class User(SQLModel, table=True):
     takma_ad: str = Field(unique=True)
     sifre_hash: str
     admin: bool = False
-
 
 class Meme(SQLModel, table=True):
     id: str = Field(primary_key=True)
