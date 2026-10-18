@@ -24,13 +24,13 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
-
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
-        # Prod frontend adresini buraya ekleyebilirsin.
+        frontend_url,
     ],
     allow_credentials=False,
     allow_methods=["*"],
