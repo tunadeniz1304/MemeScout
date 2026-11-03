@@ -156,3 +156,44 @@ class RejectedFileOut(BaseModel):
 class BulkUploadResultOut(BaseModel):
     yuklenen: list[MemeOut]
     reddedilen: list[RejectedFileOut]
+
+
+# ------------------------------------------------------------------ atama
+
+class AssignmentCreate(BaseModel):
+    meme_ids: list[str] = Field(min_length=1)
+    annotator_id: str
+    cift_etiket: bool = False
+    kalibrasyon: bool = False
+
+
+class AutoAssignRequest(BaseModel):
+    annotator_ids: list[str] = Field(min_length=2)
+    cift_etiket_orani: float = Field(default=0.2, ge=0, le=1)
+    dry_run: bool = True
+
+
+class PlannedAssignmentOut(BaseModel):
+    meme_id: str
+    annotator_ids: list[str]
+
+
+class PersonLoadOut(BaseModel):
+    annotator: UserRefOut
+    meme_sayisi: int
+
+
+class PairLoadOut(BaseModel):
+    ikili: list[UserRefOut]
+    meme_sayisi: int
+
+
+class AutoAssignPlanOut(BaseModel):
+    dry_run: bool
+    atamalar: list[PlannedAssignmentOut]
+    kisi_basi: list[PersonLoadOut]
+    ikili_dagilimi: list[PairLoadOut]
+
+
+class ReassignRequest(BaseModel):
+    yeni_annotator_id: str
