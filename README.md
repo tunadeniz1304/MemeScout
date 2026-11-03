@@ -98,6 +98,8 @@ The backend does not start without `DATABASE_URL`. For local development, create
 DATABASE_URL=sqlite:///./memescout.db
 ```
 
+Sign-up is closed by default. To allow it locally, also add `REGISTRATION_OPEN=1` to that file and `VITE_REGISTRATION_OPEN=1` to `annotation-platform/frontend/.env`.
+
 > [!WARNING]
 > Never commit `.env` or any secret. It is ignored by `.gitignore`.
 
