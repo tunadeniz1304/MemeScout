@@ -4,10 +4,20 @@ import os
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from sqlalchemy.exc import SQLAlchemyError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import models  # noqa: F401
 from app.database import create_db_and_tables
-from app.errors import ApiHatasi, api_hatasi_handler
+from app.errors import (
+    ApiHatasi,
+    api_hatasi_handler,
+    beklenmeyen_hata_handler,
+    dogrulama_hatasi_handler,
+    http_hatasi_handler,
+    veritabani_hatasi_handler,
+)
 from app.routes import auth, users
 
 load_dotenv()
@@ -59,6 +69,10 @@ async def log_origin(request, call_next):
     return await call_next(request)
 
 app.add_exception_handler(ApiHatasi, api_hatasi_handler)
+app.add_exception_handler(RequestValidationError, dogrulama_hatasi_handler)
+app.add_exception_handler(StarletteHTTPException, http_hatasi_handler)
+app.add_exception_handler(SQLAlchemyError, veritabani_hatasi_handler)
+app.add_exception_handler(Exception, beklenmeyen_hata_handler)
 app.include_router(auth.router)
 app.include_router(users.router)
 
