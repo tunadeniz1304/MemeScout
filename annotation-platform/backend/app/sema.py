@@ -4,6 +4,8 @@ Kurallar tek yerde tanımlıdır; `GET /schema/annotation` bunları olduğu gibi
 backend gönderimde aynı kurallarla doğrular.
 """
 
+from app.metin import tr_kucuk
+
 SEMA_VERSIYONU = "1.0"
 
 ETIKET_ALANLARI = ("duygu", "niyet", "mekanizma", "uyari")
@@ -109,3 +111,97 @@ def bos_icerik() -> dict:
         alan: [] if kural["tip"] in LISTE_TIPLERI and alan != "uyari" else None
         for alan, kural in ALAN_KURALLARI.items()
     }
+
+
+# --- Gönderim doğrulaması -------------------------------------------------------------
+# Hata yolları içerik alan adıdır (liste elemanları için `ornek_durumlar[2]`); frontend
+# hatayı ilgili inputun altında bu yolla gösterir.
+
+def _hata(alan: str, kural: str, mesaj: str) -> dict:
+    return {"alan": alan, "kural": kural, "mesaj": mesaj}
+
+
+def _bos_mu(deger) -> bool:
+    return deger is None or (isinstance(deger, str) and not deger.strip())
+
+
+def _metin_dogrula(alan: str, kural: dict, deger) -> list[dict]:
+    if _bos_mu(deger):
+        return [_hata(alan, "zorunlu", "Bu alan zorunlu.")] if kural["zorunlu"] else []
+    if not isinstance(deger, str):
+        return [_hata(alan, "gecersiz_deger", "Metin olmalı.")]
+    if kural["tip"] == "enum":
+        if deger not in kural["degerler"]:
+            return [_hata(alan, "gecersiz_etiket", f"Geçerli değerler: {', '.join(kural['degerler'])}.")]
+        return []
+    uzunluk = len(deger.strip())
+    hatalar = []
+    if "min_karakter" in kural and uzunluk < kural["min_karakter"]:
+        hatalar.append(_hata(alan, "min_karakter", f"En az {kural['min_karakter']} karakter olmalı."))
+    if "max_karakter" in kural and uzunluk > kural["max_karakter"]:
+        hatalar.append(_hata(alan, "max_karakter", f"En fazla {kural['max_karakter']} karakter olabilir."))
+    return hatalar
+
+
+def _liste_dogrula(alan: str, kural: dict, deger, etiket_durumlari: dict) -> list[dict]:
+    if deger is None:
+        if not kural["zorunlu"]:
+            return []
+        if alan == "uyari":
+            return [_hata(alan, "zorunlu", "Bir uyarı seç ya da bilinçli olarak 'uyarı yok' seçeneğini onayla.")]
+        return [_hata(alan, "zorunlu", "Bu alan zorunlu.")]
+    if not isinstance(deger, list):
+        return [_hata(alan, "gecersiz_deger", "Liste olmalı.")]
+    if not deger and not kural["zorunlu"]:
+        return []
+
+    hatalar = []
+    if "min_adet" in kural and len(deger) < kural["min_adet"]:
+        hatalar.append(_hata(alan, "min_adet", f"En az {kural['min_adet']} öğe olmalı."))
+    if "max_adet" in kural and len(deger) > kural["max_adet"]:
+        hatalar.append(_hata(alan, "max_adet", f"En fazla {kural['max_adet']} öğe olabilir."))
+
+    gorulenler = set()
+    for sira, oge in enumerate(deger):
+        yol = f"{alan}[{sira}]"
+        if not isinstance(oge, str):
+            hatalar.append(_hata(yol, "gecersiz_deger", "Metin olmalı."))
+            continue
+        if kural["tip"] == "metin_listesi":
+            metin = oge.strip()
+            if not metin:
+                hatalar.append(_hata(yol, "zorunlu", "Boş öğe olamaz."))
+                continue
+            if "max_karakter" in kural and len(metin) > kural["max_karakter"]:
+                hatalar.append(_hata(yol, "max_karakter", f"En fazla {kural['max_karakter']} karakter olabilir."))
+            anahtar = tr_kucuk(metin)
+        else:
+            durumlar = etiket_durumlari.get(kural["etiket_alani"], {})
+            if oge not in durumlar:
+                hatalar.append(_hata(yol, "gecersiz_etiket", "Bu etiket listede yok."))
+            elif not durumlar[oge]:
+                hatalar.append(_hata(yol, "pasif_etiket", "Bu etiket pasifleştirildi; başka bir etiket seç."))
+            anahtar = oge
+        if kural.get("tekrarsiz") and anahtar in gorulenler:
+            hatalar.append(_hata(yol, "tekrar", "Bu öğe listede tekrar ediyor."))
+        gorulenler.add(anahtar)
+    return hatalar
+
+
+def icerik_dogrula(icerik: dict, etiket_alanlari: dict) -> list[dict]:
+    """İçeriği gönderim kurallarına göre doğrular; hata yoksa boş liste döner.
+
+    `etiket_alanlari`, güncel etiket listesinin `alanlar` sözlüğüdür; pasif etiketler
+    `pasif_etiket`, listede olmayanlar `gecersiz_etiket` hatası verir.
+    """
+    etiket_durumlari = {
+        alan: {oge["etiket"]: oge["aktif"] for oge in etiketler} for alan, etiketler in etiket_alanlari.items()
+    }
+    hatalar = []
+    for alan, kural in ALAN_KURALLARI.items():
+        deger = icerik.get(alan)
+        if kural["tip"] in LISTE_TIPLERI:
+            hatalar.extend(_liste_dogrula(alan, kural, deger, etiket_durumlari))
+        else:
+            hatalar.extend(_metin_dogrula(alan, kural, deger))
+    return hatalar

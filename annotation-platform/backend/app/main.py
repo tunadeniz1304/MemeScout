@@ -18,7 +18,7 @@ from app.errors import (
     http_hatasi_handler,
     veritabani_hatasi_handler,
 )
-from app.routes import auth, users
+from app.routes import auth, schema, users
 
 load_dotenv()
 
@@ -75,6 +75,7 @@ app.add_exception_handler(SQLAlchemyError, veritabani_hatasi_handler)
 app.add_exception_handler(Exception, beklenmeyen_hata_handler)
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(schema.router)
 
 
 @app.get("/")

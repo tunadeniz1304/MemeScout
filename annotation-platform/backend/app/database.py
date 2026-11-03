@@ -61,6 +61,7 @@ def rls_ac(baglanti) -> list[str]:
 
 def create_db_and_tables():
     from app import models  # noqa: F401  (tabloların metadata'ya kaydı için)
+    from app.etiketler import etiket_listesi_tohumla
 
     with engine.begin() as baglanti:
         postgres = baglanti.dialect.name == "postgresql"
@@ -70,6 +71,7 @@ def create_db_and_tables():
         SQLModel.metadata.create_all(baglanti)
         if postgres:
             rls_ac(baglanti)
+        etiket_listesi_tohumla(baglanti)
 
 def get_session():
     with Session(engine) as session:
