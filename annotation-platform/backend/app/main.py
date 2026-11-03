@@ -18,7 +18,7 @@ from app.errors import (
     http_hatasi_handler,
     veritabani_hatasi_handler,
 )
-from app.routes import annotations, assignments, auth, comments, memes, reviews, schema, users
+from app.routes import annotations, assignments, auth, comments, memes, queries, reviews, schema, users
 
 load_dotenv()
 
@@ -81,6 +81,7 @@ app.include_router(assignments.router)
 app.include_router(annotations.router)
 app.include_router(comments.router)
 app.include_router(reviews.router)
+app.include_router(queries.router)
 
 
 @app.get("/")

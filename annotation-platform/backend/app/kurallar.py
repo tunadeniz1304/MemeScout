@@ -197,3 +197,16 @@ def gizli_yorum_yazarlari(session: Session, kullanici_id: str) -> dict[str, set[
         if yazarlar:
             gizli[meme_id] = yazarlar
     return gizli
+
+
+def gold_katkicilari(session: Session, meme_id: str) -> set[str]:
+    """Sızıntı kuralı (ADR-0002): gold kaydının kaynak annotation sahipleri ve reviewer'ı.
+
+    Gold kaydı henüz yoksa katkı verecek olanlar, meme'in ana turdaki annotator'larıdır.
+    """
+    gold = session.get(GoldRecord, meme_id)
+    if gold is None:
+        return {a.annotator_id for a in grubu(meme_annotationlari(session, meme_id), False)}
+    kaynaklar = set(gold.kaynak_annotationlar)
+    sahipler = session.exec(select(Annotation.annotator_id).where(Annotation.id.in_(kaynaklar))).all() if kaynaklar else []
+    return set(sahipler) | ({gold.reviewer_id} if gold.reviewer_id else set())

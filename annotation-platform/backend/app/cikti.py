@@ -108,3 +108,14 @@ def gold(kayit, kisiler: dict[str, User]) -> dict:
         "sema_versiyonu": kayit.sema_versiyonu,
         "etiket_listesi_versiyonu": kayit.etiket_listesi_versiyonu,
     }
+
+
+def test_sorgusu(sorgu, kisiler: dict[str, User]) -> dict:
+    return {
+        "id": sorgu.id,
+        "metin": sorgu.metin,
+        "mod": sorgu.mod,
+        "dogru_memeler": sorgu.dogru_memeler,
+        "yazan": kullanici_ref(kisiler.get(sorgu.yazan_id)),
+        "zaman": sorgu.zaman,
+    }

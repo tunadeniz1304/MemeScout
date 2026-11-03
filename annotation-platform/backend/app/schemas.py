@@ -375,3 +375,36 @@ class GoldRecordOut(BaseModel):
 
 class RevisionRequestIn(BaseModel):
     not_: DoluMetin = Field(alias="not")
+
+
+# ------------------------------------------------------------------ test sorgusu
+
+SorguModu = Literal["durum", "tarif"]
+SorguMetni = Annotated[str, StringConstraints(strip_whitespace=True, min_length=5, max_length=2000)]
+
+
+class TestQueryCreateIn(BaseModel):
+    __test__ = False  # pytest bu sınıfı test sınıfı sanmasın
+
+    metin: SorguMetni
+    mod: SorguModu
+    dogru_memeler: list[str] = Field(min_length=1)
+
+
+class TestQueryUpdateIn(BaseModel):
+    __test__ = False
+
+    metin: Optional[SorguMetni] = None
+    mod: Optional[SorguModu] = None
+    dogru_memeler: Optional[list[str]] = Field(default=None, min_length=1)
+
+
+class TestQueryOut(BaseModel):
+    __test__ = False
+
+    id: str
+    metin: str
+    mod: SorguModu
+    dogru_memeler: list[str]
+    yazan: Optional[UserRefOut]
+    zaman: Zaman
