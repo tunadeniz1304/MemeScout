@@ -3,7 +3,8 @@ import { api, checkTestQueryLeakage, clearToken, getToken, setToken } from './se
 import { createEmptyAnnotationContent, validateAnnotationLocally } from './services/contracts'
 
 const blankContent = createEmptyAnnotationContent
-const fieldNames = { tur: 'Meme türü', ad: 'Meme adı', kaynak: 'Kaynak', durum: 'Genel durum', ornek_durumlar: 'Örnek durumlar', uygun_olmayan_durumlar: 'Uygun olmayan durumlar', kulturel_bilgi: 'Kültürel bilgi', duygu: 'Duygu', niyet: 'Niyet', mekanizma: 'Mizah mekanizması', uyari: 'Uyarılar', notlar: 'Notlar' }
+const fieldNames = { tur: 'Meme türü', ad: 'Meme adı', kaynak: 'Kaynak', vlm_aciklama: 'Görsel tarif', durum: 'Genel durum', ornek_durumlar: 'Örnek durumlar', uygun_olmayan_durumlar: 'Uygun olmayan durumlar', kulturel_bilgi: 'Kültürel bilgi', anahtar_kelimeler: 'Anahtar kelimeler', duygu: 'Duygu', niyet: 'Niyet', mekanizma: 'Mizah mekanizması', uyari: 'Uyarılar', notlar: 'Notlar' }
+const characterHint = (rule) => rule.tip === 'metin_listesi' ? (rule.max_karakter ? `Her biri en fazla ${rule.max_karakter} karakter` : '') : rule.min_karakter && rule.max_karakter ? `${rule.min_karakter}–${rule.max_karakter} karakter` : rule.min_karakter ? `En az ${rule.min_karakter} karakter` : rule.max_karakter ? `En fazla ${rule.max_karakter} karakter` : ''
 const registrationOpen = import.meta.env.VITE_REGISTRATION_OPEN === '1'
 
 function Brand() {
@@ -26,15 +27,16 @@ function MultiText({ value = [], onChange, placeholder }) {
 
 function LabelPicker({ field, labels = [], value = [], onChange }) {
   const choices = labels.filter((label) => label.aktif !== false)
+  const stale = value.filter((tag) => !choices.some((label) => label.etiket === tag))
   const toggle = (tag) => onChange(value.includes(tag) ? value.filter((item) => item !== tag) : [...value, tag])
-  return <div className="label-picker">{choices.map((label) => <button type="button" key={label.etiket} className={`tag-option ${value.includes(label.etiket) ? 'selected' : ''}`} title={label.tanim} onClick={() => toggle(label.etiket)}><span>{value.includes(label.etiket) ? '✓' : '+'}</span>{label.gorunen_ad}</button>)}{choices.length === 0 && <p className="muted tiny">Etiket listesi yüklenemedi.</p>}</div>
+  return <div className="label-picker">{choices.map((label) => <button type="button" key={label.etiket} className={`tag-option ${value.includes(label.etiket) ? 'selected' : ''}`} title={label.tanim} onClick={() => toggle(label.etiket)}><span>{value.includes(label.etiket) ? '✓' : '+'}</span>{label.gorunen_ad}</button>)}{stale.map((tag) => <button type="button" key={tag} className="tag-option selected stale" title="Bu etiket artık listede etkin değil; kaldırmak için tıkla." onClick={() => toggle(tag)}><span>×</span>{labels.find((label) => label.etiket === tag)?.gorunen_ad || tag} (pasif)</button>)}{choices.length === 0 && <p className="muted tiny">Etiket listesi yüklenemedi.</p>}</div>
 }
 
 function Field({ name, rule = {}, content, update, labels, errors = [], confidence, updateConfidence }) {
   const title = fieldNames[name] || name.replaceAll('_', ' ')
   const required = rule.zorunlu
   const error = errors.find((item) => item.alan === name || item.alan?.startsWith(`${name}[`))
-  const label = <div className="field-heading"><label htmlFor={name}>{title}{required && <span className="required"> *</span>}</label>{rule.min_karakter && <span className="field-hint">En az {rule.min_karakter} karakter</span>}{rule.max_adet && <span className="field-hint">En fazla {rule.max_adet} seçim</span>}</div>
+  const label = <div className="field-heading"><label htmlFor={name}>{title}{required && <span className="required"> *</span>}</label>{characterHint(rule) && <span className="field-hint">{characterHint(rule)}</span>}{rule.max_adet && <span className="field-hint">En fazla {rule.max_adet} seçim</span>}</div>
   let control
   if (name === 'uyari') {
     const noWarning = Array.isArray(content.uyari) && content.uyari.length === 0
@@ -185,7 +187,7 @@ export default function App() {
   const save = useCallback(async (quiet = false) => {
     if (!current || !annotation || !dirty.current) return
     try {
-      const result = await api.saveDraft(current.annotation_id, { surum: version.current, icerik: contentRef.current, ...(familiarity !== null ? { tanidiklik: familiarity } : {}), ...(Object.keys(confidence).length ? { alan_guveni: confidence } : {}), aktif_sure_artis_sn: Math.min(activeSeconds.current, 300) })
+      const result = await api.saveDraft(current.annotation_id, { surum: version.current, icerik: contentRef.current, ...(familiarity !== null ? { tanidiklik: familiarity } : {}), alan_guveni: confidence, aktif_sure_artis_sn: Math.min(activeSeconds.current, 300) })
       version.current = result.surum; activeSeconds.current = 0; dirty.current = false; setSavedAt(new Date())
       if (!quiet) setNotice('Taslağın kaydedildi.')
       return true
@@ -204,7 +206,7 @@ export default function App() {
   useEffect(() => {
     if (!current || !annotation) return undefined
     const timer = window.setInterval(() => save(true), 5000)
-    const onLeave = () => { if (!dirty.current) return; api.saveDraft(current.annotation_id, { surum: version.current, icerik: contentRef.current, ...(familiarity !== null ? { tanidiklik: familiarity } : {}), ...(Object.keys(confidence).length ? { alan_guveni: confidence } : {}), aktif_sure_artis_sn: Math.min(activeSeconds.current, 300) }, true).catch(() => {}) }
+    const onLeave = () => { if (!dirty.current) return; api.saveDraft(current.annotation_id, { surum: version.current, icerik: contentRef.current, ...(familiarity !== null ? { tanidiklik: familiarity } : {}), alan_guveni: confidence, aktif_sure_artis_sn: Math.min(activeSeconds.current, 300) }, true).catch(() => {}) }
     window.addEventListener('beforeunload', onLeave)
     return () => { window.clearInterval(timer); window.removeEventListener('beforeunload', onLeave) }
   }, [current, annotation, save, familiarity, confidence])
@@ -249,7 +251,7 @@ export default function App() {
 
   const doSkip = async () => {
     setBusy(true); setError('')
-    try { await api.skip(current.annotation_id, { gerekce: skipReason, aciklama: skipDescription || null, ...(familiarity !== null ? { tanidiklik: familiarity } : {}) }); setQueue((old) => old.filter((item) => item.annotation_id !== current.annotation_id)); setCurrent(null); setAnnotation(null); activeMemeId.current = null; setSkipOpen(false); setNotice('İş atlandı ve yeniden atama kuyruğuna alındı.') }
+    try { await api.skip(current.annotation_id, { gerekce: skipReason, aciklama: skipDescription || null, ...(familiarity !== null ? { tanidiklik: familiarity } : {}) }); dirty.current = false; setQueue((old) => old.filter((item) => item.annotation_id !== current.annotation_id)); setCurrent(null); setAnnotation(null); activeMemeId.current = null; setSkipOpen(false); setNotice('İş atlandı ve yeniden atama kuyruğuna alındı.') }
     catch (cause) { setError(cause.message || 'İş atlanamadı.') }
     finally { setBusy(false) }
   }
