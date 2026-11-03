@@ -40,12 +40,14 @@ atandi / devam_ediyor → atlandi
 | Endpoint | Geçiş |
 |---|---|
 | `POST /annotations/{id}/start` | atandi → devam_ediyor |
-| `POST /annotations/{id}/submit` | devam_ediyor, revizyon_gerekli → gonderildi (tek etiketliyse → onaylandi) |
+| `POST /annotations/{id}/submit` | devam_ediyor, revizyon_gerekli → gonderildi |
 | `POST /annotations/{id}/skip` | atandi, devam_ediyor → atlandi |
 | `POST /annotations/{id}/request-revision` | gonderildi → revizyon_gerekli |
 | `POST /reviews/{meme_id}/gold` | gonderildi → onaylandi |
 
 Geçersiz geçişlerde 409 `GECERSIZ_DURUM_GECISI` döner.
+
+Gönderilen annotation otomatik onaylanmaz. Meme'in annotation'larının hepsi gönderilince meme inceleme kuyruğuna (`GET /reviews`) düşer: çift etiketli meme'de reviewer anlaşmazlığı çözer, tek etiketli meme'de ikinci bakışı yapar ([ADR-0009](../docs/adr/0009-tek-etiketli-memelerde-ikinci-bakis.md)). Reviewer gold kaydını onaylar ya da revizyon ister.
 
 
 ## Gereksinimler ve Kurulum
