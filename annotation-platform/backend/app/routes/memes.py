@@ -77,12 +77,6 @@ class _Yukleme:
         self.session.commit()
 
 
-def meme_ciktilari(session: Session, memeler: list[Meme], kullanici: User) -> list[dict]:
-    baglam = MemeBaglami(session, [meme.id for meme in memeler])
-    kisiler = cikti.kullanicilar(session)
-    return [cikti.meme(meme, baglam, kisiler, kullanici) for meme in memeler]
-
-
 @router.get("", response_model=MemePageOut)
 def memeleri_listele(
     etiket_durumu: Optional[MemeEtiketDurumu] = None,
@@ -133,7 +127,7 @@ def meme_yukle(
             raise ApiHatasi(422, "BOZUK_DOSYA", "Dosya okunamadı ya da eksik inmiş.")
         raise ApiHatasi(415, "DESTEKLENMEYEN_TUR", "Yalnızca jpg, png, webp ve gif dosyaları yüklenebilir.")
     yukleme.kaydet()
-    return meme_ciktilari(session, [meme], yonetici)[0]
+    return cikti.memeler(session, [meme], yonetici)[0]
 
 
 @router.post("/bulk", response_model=BulkUploadResultOut)
@@ -151,7 +145,7 @@ def toplu_yukle(
         else:
             yuklenenler.append(meme)
     yukleme.kaydet()
-    return {"yuklenen": meme_ciktilari(session, yuklenenler, yonetici), "reddedilen": reddedilenler}
+    return {"yuklenen": cikti.memeler(session, yuklenenler, yonetici), "reddedilen": reddedilenler}
 
 
 @router.get("/{meme_id}", response_model=MemeDetailOut)
@@ -167,7 +161,7 @@ def meme_detayi(
         sorgu = sorgu.where(Annotation.annotator_id == kullanici.id)
     kisiler = cikti.kullanicilar(session)
     return {
-        **meme_ciktilari(session, [meme], kullanici)[0],
+        **cikti.memeler(session, [meme], kullanici)[0],
         "annotasyonlar": [cikti.annotation_ozeti(annotation, kisiler) for annotation in session.exec(sorgu).all()],
     }
 

@@ -331,3 +331,47 @@ class CommentPageOut(BaseModel):
     toplam: int
     sayfa: int
     boyut: int
+
+
+# ------------------------------------------------------------------ review / gold
+
+class ReviewQueueItemOut(BaseModel):
+    meme_id: str
+    kucuk_gorsel_url: str
+    annotation_ids: list[str]
+    cift_etiket: bool
+    son_gonderme_zamani: Optional[Zaman] = None
+
+
+class ComparisonOut(BaseModel):
+    alan: str
+    ayni: bool
+    ortak_etiketler: Optional[list[str]] = None
+
+
+class ReviewDetailOut(BaseModel):
+    meme: MemeOut
+    annotasyonlar: list[AnnotationOut]
+    karsilastirma: list[ComparisonOut]
+
+
+class GoldCreateIn(BaseModel):
+    # İçerik alan alan sunucuda doğrulanır; hatalar gönderimdeki gibi alan adıyla döner.
+    icerik: dict
+    kaynak_annotationlar: list[str] = Field(min_length=1)
+    cozum_notu: Optional[str] = Field(default=None, max_length=2000)
+
+
+class GoldRecordOut(BaseModel):
+    meme_id: str
+    icerik: dict
+    kaynak_annotationlar: list[str]
+    reviewer: Optional[UserRefOut] = None
+    cozum_notu: Optional[str] = None
+    onay_zamani: Zaman
+    sema_versiyonu: str
+    etiket_listesi_versiyonu: str
+
+
+class RevisionRequestIn(BaseModel):
+    not_: DoluMetin = Field(alias="not")

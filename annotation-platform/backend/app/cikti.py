@@ -4,6 +4,7 @@ from typing import Optional
 
 from sqlmodel import Session, select
 
+from app.kurallar import MemeBaglami
 from app.models import LabelListVersion, Meme, User
 from app.sema import bos_icerik
 
@@ -38,6 +39,12 @@ def meme(meme: Meme, baglam, kisiler: dict[str, User], kullanici: User) -> dict:
         "ad": baglam.ad(meme.id),
         "acik_yorum_sayisi": baglam.acik_yorum_sayisi(meme.id, kullanici.id),
     }
+
+
+def memeler(session: Session, kayitlar: list[Meme], kullanici: User) -> list[dict]:
+    baglam = MemeBaglami(session, [kayit.id for kayit in kayitlar])
+    kisiler = kullanicilar(session)
+    return [meme(kayit, baglam, kisiler, kullanici) for kayit in kayitlar]
 
 
 def annotation_ozeti(annotation, kisiler: dict[str, User]) -> dict:
@@ -87,4 +94,17 @@ def yorum(yorum, kisiler: dict[str, User]) -> dict:
         "metin": yorum.metin,
         "tur": yorum.tur,
         "cozuldu": yorum.cozuldu,
+    }
+
+
+def gold(kayit, kisiler: dict[str, User]) -> dict:
+    return {
+        "meme_id": kayit.meme_id,
+        "icerik": {**bos_icerik(), **kayit.icerik},
+        "kaynak_annotationlar": kayit.kaynak_annotationlar,
+        "reviewer": kullanici_ref(kisiler.get(kayit.reviewer_id)),
+        "cozum_notu": kayit.cozum_notu,
+        "onay_zamani": kayit.onay_zamani,
+        "sema_versiyonu": kayit.sema_versiyonu,
+        "etiket_listesi_versiyonu": kayit.etiket_listesi_versiyonu,
     }
