@@ -87,6 +87,8 @@ class Annotation(SQLModel, table=True):
     sema_versiyonu: Optional[str] = None
     etiket_listesi_versiyonu: Optional[str] = None
     surum: int = 1
+    # Form etiketlemeye başlarken neyle dolu geldi: "ai_taslagi", "vlm_taslagi" ya da boş (None).
+    on_doldurma: Optional[str] = None
     # Yeniden atamada eski annotation atlandi kalır ve yerine geçen kayda bağlanır.
     yerine_gecen_id: Optional[str] = Field(default=None, foreign_key="annotation.id")
 

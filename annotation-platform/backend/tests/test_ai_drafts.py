@@ -202,3 +202,67 @@ def test_ai_taslaklari_disa_aktarilir(client, yonetici, meme_olustur):
 def test_meme_modeli_vlm_taslagini_tasir(session, yonetici, meme_olustur):
     meme = meme_olustur(yonetici)
     assert session.exec(select(Meme.vlm_taslak).where(Meme.id == meme.id)).one() is None
+
+
+# ------------------------------------------------------------------ etiketlemeye başlarken doldurma
+
+def baslat(client, kisi, annotation_id):
+    yanit = client.post(f"/api/v1/annotations/{annotation_id}/start", headers=basliklar(kisi))
+    assert yanit.status_code == 200
+    return yanit.json()
+
+
+def test_form_ai_taslagiyla_dolu_baslar_ve_duzeltilip_incelemeye_gider(client, yonetici, ali, ayse, meme_olustur, annotation_olustur):
+    meme = meme_olustur(yonetici)
+    ham = kart(ornek_durumlar=[f"örnek durum {sira}" for sira in range(7)])
+    ice_aktar(client, yonetici, {"sha256": meme.sha256, "kaynak": "llm-auto", "kart": ham})
+    annotation = annotation_olustur(meme, ali)
+
+    detay = baslat(client, ali, annotation.id)
+    assert detay["on_doldurma"] == "ai_taslagi"
+    assert detay["icerik"] == karttan_icerik(ham)
+    gecmis = client.get(f"/api/v1/annotations/{annotation.id}/versions", headers=basliklar(ali)).json()
+    assert [(surum["surum"], surum["icerik"]["ornek_durumlar"][-1]) for surum in gecmis] == [(1, "örnek durum 6")]
+
+    # Taslak kurala uymuyor; annotator düzeltmeden gönderemez.
+    gonderim = client.post(f"/api/v1/annotations/{annotation.id}/submit", json={"surum": 1}, headers=basliklar(ali))
+    assert gonderim.status_code == 422
+    assert ("ornek_durumlar", "max_adet") in kurallar(gonderim.json()["hata"]["alanlar"])
+
+    surum = client.patch(
+        f"/api/v1/annotations/{annotation.id}/draft",
+        json={"surum": 1, "icerik": {"ornek_durumlar": ham["ornek_durumlar"][:4]}, "tanidiklik": 4},
+        headers=basliklar(ali),
+    ).json()["surum"]
+    sonuc = client.post(f"/api/v1/annotations/{annotation.id}/submit", json={"surum": surum}, headers=basliklar(ali)).json()
+    assert sonuc["durum_kodu"] == "gonderildi"  # taslak gold olmaz; ikinci bakışa gider
+    kuyruk = client.get("/api/v1/reviews", headers=basliklar(ayse)).json()
+    assert [(oge["meme_id"], oge["cift_etiket"]) for oge in kuyruk] == [(meme.id, False)]
+    assert client.get(f"/api/v1/memes/{meme.id}/gold", headers=basliklar(ayse)).status_code == 404
+
+
+def test_vlm_taslagi_yalnizca_gorsel_tarifi_doldurur(client, session, yonetici, ali, ayse, meme_olustur, annotation_olustur):
+    meme = meme_olustur(yonetici)
+    meme.vlm_taslak = "Şüpheyle bakan bir adam."
+    session.add(meme)
+    session.commit()
+    cift = annotation_olustur(meme, ali, cift_etiket=True)
+    kalibrasyon = annotation_olustur(meme, ayse, kalibrasyon=True)
+
+    for kisi, annotation in ((ali, cift), (ayse, kalibrasyon)):
+        detay = baslat(client, kisi, annotation.id)
+        assert detay["on_doldurma"] == "vlm_taslagi"
+        assert detay["icerik"]["vlm_aciklama"] == "Şüpheyle bakan bir adam."
+        assert detay["icerik"]["durum"] is None and detay["icerik"]["duygu"] == []
+
+
+def test_taslak_yoksa_form_bos_baslar_ve_tekrar_baslatmak_doldurmaz(client, session, yonetici, ali, meme_olustur, annotation_olustur):
+    meme = meme_olustur(yonetici)
+    annotation = annotation_olustur(meme, ali)
+    detay = baslat(client, ali, annotation.id)
+    assert (detay["on_doldurma"], detay["icerik"]["ad"]) == (None, None)
+
+    meme.vlm_taslak = "Sonradan gelen tarif"
+    session.add(meme)
+    session.commit()
+    assert baslat(client, ali, annotation.id)["icerik"]["vlm_aciklama"] is None

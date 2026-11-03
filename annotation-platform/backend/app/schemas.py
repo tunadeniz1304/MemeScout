@@ -305,6 +305,7 @@ class AnnotationOut(BaseModel):
     sema_versiyonu: Optional[str] = None
     etiket_listesi_versiyonu: Optional[str] = None
     surum: int
+    on_doldurma: Optional[Literal["ai_taslagi", "vlm_taslagi"]] = None
 
 
 class ValidationResultOut(BaseModel):

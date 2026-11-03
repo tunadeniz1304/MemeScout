@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlmodel import Session, select
 
 from app import cikti
+from app.ai_taslak import on_doldurma
 from app.database import get_session
 from app.denetim import ANNOTATION, DURUM_DEGISIKLIGI, GUNCELLEME, denetle, farklari_denetle
 from app.errors import ApiHatasi
@@ -185,6 +186,20 @@ def baslat(
     annotation.baslama_zamani = annotation.guncellenme_zamani
     annotation.sema_versiyonu = SEMA_VERSIYONU
     annotation.etiket_listesi_versiyonu = guncel_liste(session).versiyon
+    doldurma = on_doldurma(session, annotation)
+    if doldurma:
+        kaynak, icerik = doldurma
+        annotation.icerik = {**bos_icerik(), **icerik}
+        annotation.on_doldurma = kaynak
+        denetle(session, kullanici.id, ANNOTATION, annotation.id, GUNCELLEME, alan="on_doldurma", eski=None, yeni=kaynak)
+        # Taslak revizyon geçmişinin ilk sürümü olur; annotator'ın ne kadar düzelttiği görülür.
+        session.add(AnnotationVersion(
+            annotation_id=annotation.id,
+            surum=annotation.surum,
+            degistiren_id=kullanici.id,
+            durum_kodu=annotation.durum_kodu,
+            icerik=annotation.icerik,
+        ))
     return kaydet_ve_don(session, annotation)
 
 

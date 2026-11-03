@@ -90,6 +90,7 @@ def annotation(annotation, kisiler: dict[str, User]) -> dict:
         "sema_versiyonu": annotation.sema_versiyonu,
         "etiket_listesi_versiyonu": annotation.etiket_listesi_versiyonu,
         "surum": annotation.surum,
+        "on_doldurma": annotation.on_doldurma,
     }
 
 

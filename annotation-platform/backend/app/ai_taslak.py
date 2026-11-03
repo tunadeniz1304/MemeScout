@@ -6,9 +6,14 @@ başlarken formu taslakla dolu bulur, düzeltir ve gönderir.
 
 from typing import Optional
 
+from sqlmodel import Session
+
 from app.kurallar import cift_etiket_mi
-from app.models import ATANDI, ATLANDI
-from app.sema import ALAN_KURALLARI, LISTE_TIPLERI
+from app.models import ATANDI, ATLANDI, AiDraft, Annotation, Meme
+from app.sema import ALAN_KURALLARI, LISTE_TIPLERI, bos_icerik
+
+AI_TASLAGI = "ai_taslagi"
+VLM_TASLAGI = "vlm_taslagi"
 
 
 def karttan_icerik(kart: dict) -> dict:
@@ -42,4 +47,23 @@ def taslak_engeli(taslak_var: bool, gold_var: bool, meme_annotationlari: list) -
         return "cift_etiketli", "Çift etiketli meme'e AI taslağı eklenmez."
     if any(not a.kalibrasyon and a.durum_kodu not in (ATANDI, ATLANDI) for a in meme_annotationlari):
         return "etiketleme_baslamis", "Bu meme'in etiketlenmesine başlanmış; taslak forma uygulanamaz."
+    return None
+
+
+def on_doldurma(session: Session, annotation: Annotation) -> Optional[tuple[str, dict]]:
+    """Etiketlemeye başlarken forma ne doldurulacağını döner: (kaynak, içerik) ya da None.
+
+    AI taslağı yalnızca tek etiketli ana tur annotation'ına uygulanır; çift etiketlemede ve
+    kalibrasyonda form taslaksız başlar. VLM taslağı yalnızca görsel tarifi doldurur ve iki
+    annotator'a da aynı geldiği için kör etiketlemeyi bozmaz (annotation.md §4.3).
+    """
+    if annotation.icerik != bos_icerik():
+        return None  # dokunulmuş içerik ezilmez
+    if not annotation.kalibrasyon and not annotation.cift_etiket:
+        taslak = session.get(AiDraft, annotation.meme_id)
+        if taslak is not None:
+            return AI_TASLAGI, taslak.icerik
+    meme = session.get(Meme, annotation.meme_id)
+    if meme is not None and meme.vlm_taslak:
+        return VLM_TASLAGI, {"vlm_aciklama": meme.vlm_taslak}
     return None
