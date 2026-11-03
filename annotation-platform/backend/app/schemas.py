@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Any, Literal, Optional
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
 
@@ -408,3 +408,89 @@ class TestQueryOut(BaseModel):
     dogru_memeler: list[str]
     yazan: Optional[UserRefOut]
     zaman: Zaman
+
+
+# ------------------------------------------------------------------ istatistik
+
+class OverallProgressOut(BaseModel):
+    toplam_meme: int
+    atanmamis: int
+    gold_hazir: int
+    inceleme_bekleyen: int
+    yeniden_atama_bekleyen: int
+
+
+class UserProgressOut(BaseModel):
+    kullanici: UserRefOut
+    atanan: int
+    tamamlanan: int
+    kalan: int
+    atlanan: int
+    revizyon_bekleyen: int
+    ortalama_sure_sn: Optional[float] = None
+
+
+class ProgressStatsOut(BaseModel):
+    genel: OverallProgressOut
+    kullanicilar: list[UserProgressOut]
+
+
+class FieldAgreementOut(BaseModel):
+    alan: Literal["tur", "duygu", "niyet", "mekanizma", "uyari"]
+    metrik: Literal["cohen_kappa", "krippendorff_alpha_masi"]
+    deger: Optional[float]
+    n: int
+    dusuk_uyum: bool
+
+
+class LabelAgreementOut(BaseModel):
+    alan: EtiketAlani
+    etiket: str
+    kappa: Optional[float]
+    anlasmazlik_sayisi: int
+    kullanim_sayisi: int
+
+
+class AgreementStatsOut(BaseModel):
+    hesaplama_zamani: Zaman
+    cift_etiketli_meme_sayisi: int
+    alanlar: list[FieldAgreementOut]
+    etiketler: Optional[list[LabelAgreementOut]] = None
+
+
+# ------------------------------------------------------------------ admin
+
+KayitTipi = Literal["meme", "annotation", "gold", "yorum", "etiket_listesi", "test_sorgusu", "kullanici"]
+
+
+class AffectedLabelOut(BaseModel):
+    alan: EtiketAlani
+    etiket: str
+    degisiklik: Literal["pasiflestirildi", "tanim_degisti"]
+
+
+class RecheckItemOut(BaseModel):
+    kayit_tipi: Literal["annotation", "gold"]
+    kayit_id: str
+    meme_id: str
+    eski_versiyon: str
+    etkilenen_etiketler: list[AffectedLabelOut]
+
+
+class AuditEntryOut(BaseModel):
+    id: str
+    zaman: Zaman
+    kullanici: Optional[UserRefOut]
+    kayit_tipi: KayitTipi
+    kayit_id: str
+    islem: Literal["olusturma", "guncelleme", "durum_degisikligi", "silme"]
+    alan: Optional[str] = None
+    eski_deger: Any = None
+    yeni_deger: Any = None
+
+
+class AuditPageOut(BaseModel):
+    ogeler: list[AuditEntryOut]
+    toplam: int
+    sayfa: int
+    boyut: int

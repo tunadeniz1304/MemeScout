@@ -22,6 +22,7 @@ from app.models import (
     GoldRecord,
     User,
 )
+from app.yeniden_kontrol import yeniden_kontrol_listesi
 
 BEKLEYEN_DURUMLAR = (ATANDI, DEVAM_EDIYOR, REVIZYON_GEREKLI)
 GONDERILMIS_DURUMLAR = (GONDERILDI, ONAYLANDI)
@@ -98,7 +99,9 @@ def incelemeye_hazir_mi(meme_annotationlari: list) -> bool:
     return len(grup) >= gereken and all(a.durum_kodu == GONDERILDI for a in grup)
 
 
-def meme_durumu(meme_annotationlari: list, gold_var: bool) -> str:
+def meme_durumu(meme_annotationlari: list, gold_var: bool, yeniden_kontrol: bool = False) -> str:
+    if yeniden_kontrol:
+        return YENIDEN_KONTROL
     if gold_var:
         return GOLD_HAZIR
     if not grubu(meme_annotationlari, False):
@@ -140,6 +143,17 @@ class MemeBaglami:
         for meme_id, yazan_id in session.exec(yorum_sorgusu).all():
             self.acik_yorumlar.setdefault(meme_id, []).append(yazan_id)
 
+        # Gold kaydı ya da gönderilmiş bir ana tur annotation'ı yeniden kontrol listesindeyse meme
+        # yeniden_kontrol durumuna düşer. Taslaktaki pasif etiket ise gönderimde zaten yakalanır.
+        gonderilmisler = {
+            a.id for liste in self.annotationlar.values() for a in liste
+            if a.durum_kodu in GONDERILMIS_DURUMLAR and not a.kalibrasyon
+        }
+        self.yeniden_kontrol = {
+            kayit["meme_id"] for kayit in yeniden_kontrol_listesi(session)
+            if kayit["kayit_tipi"] == "gold" or kayit["kayit_id"] in gonderilmisler
+        }
+
     def meme_annotationlari(self, meme_id: str) -> list:
         return self.annotationlar.get(meme_id, [])
 
@@ -147,7 +161,7 @@ class MemeBaglami:
         return meme_id in self.gold_adlari
 
     def durum(self, meme_id: str) -> str:
-        return meme_durumu(self.meme_annotationlari(meme_id), self.gold_var(meme_id))
+        return meme_durumu(self.meme_annotationlari(meme_id), self.gold_var(meme_id), meme_id in self.yeniden_kontrol)
 
     def annotatorlar(self, meme_id: str) -> list[str]:
         idler: list[str] = []
