@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlmodel import Session, select
 
 from app.database import get_session
+from app.denetim import KULLANICI, OLUSTURMA, denetle, kullanici_degeri
 from app.errors import ApiHatasi
 from app.models import User
 from app.schemas import LoginRequest, LoginResponse, RegisterRequest, UserOut
@@ -32,6 +33,8 @@ def register(istek: RegisterRequest, session: Session = Depends(get_session)):
         admin=False,
     )
     session.add(kullanici)
+    session.flush()  # denetim kaydı yeni kullanıcıya bağlanır; önce kullanıcı yazılmalı
+    denetle(session, kullanici.id, KULLANICI, kullanici.id, OLUSTURMA, yeni=kullanici_degeri(kullanici))
     session.commit()
     session.refresh(kullanici)
     return LoginResponse(

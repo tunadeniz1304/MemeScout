@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlmodel import Session, or_, select
 
 from app.database import get_session
+from app.denetim import KULLANICI, OLUSTURMA, denetle, kullanici_degeri
 from app.errors import ApiHatasi
 from app.models import User
 from app.schemas import UserCreate, UserOut
@@ -20,7 +21,7 @@ def kullanicilari_listele(
 def kullanici_olustur(
     veri: UserCreate,
     session: Session = Depends(get_session),
-    _: User = Depends(admin_kullanici),
+    yonetici: User = Depends(admin_kullanici),
 ):
     mevcut = session.exec(
         select(User).where(
@@ -38,6 +39,7 @@ def kullanici_olustur(
         admin=veri.admin,
     )
     session.add(kullanici)
+    denetle(session, yonetici.id, KULLANICI, kullanici.id, OLUSTURMA, yeni=kullanici_degeri(kullanici))
     session.commit()
     session.refresh(kullanici)
     return kullanici
