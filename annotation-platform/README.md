@@ -95,6 +95,19 @@ python -m app.import_memes --api https://memescout-annotation-api.vercel.app/api
 
 `--deneme` yalnızca sayar. Betik tekrar çalıştırılabilir; daha önce yüklenen görseller kopya olarak reddedilir.
 
+### AI taslakları
+
+`app/import_ai_drafts.py`, bir LLM'in architecture.md §3 biçiminde hazırladığı kartları meme'lere taslak olarak bağlar ([ADR-0010](../docs/adr/0010-tek-etiketli-memelerde-llm-taslagi.md)). Kartlar YAML (kart listesi) ya da CSV (aynı sütunlar, liste alanları ` | ` ile ayrılmış) dosyasından okunur. Her kartın `gorsel` yolu kart dosyasının klasörüne, `--gorseller` verilirse o klasöre göre çözülür ve görselin sha256'sıyla meme bulunur. Eşleşen meme yoksa görsel yeni meme olarak yüklenir; `--yalniz-eslesenler` bu kartları atlar. Kurallara uymayan kartlar da alınır; ihlaller ve sabit listede olmayan etiketler raporda listelenir.
+
+```bash
+python -m app.import_ai_drafts --deneme memescout_gold.yaml
+python -m app.import_ai_drafts --api https://memescout-annotation-api.vercel.app/api/v1 --kullanici ADMIN_ADI memescout_gold.yaml
+```
+
+Taslak gold olmaz. AI taslağı olan meme tek etiketli kalır: atanan annotator etiketlemeye başlarken formu taslakla dolu bulur, düzeltir ve gönderir; ardından reviewer ikinci bakışı yapar. Bu meme'ler kalibrasyona ve çift etiketlemeye alınmaz. Ham kart değiştirilmeden saklanır ve `GET /export/ai_drafts.jsonl` ile alınır.
+
+PNG'ye dönüştürülmüş bir görsel, zip'teki orijinalle aynı sha256'yı taşımaz ve ayrı bir meme olarak yüklenir. Kartların görselleri zip'teki dosyaların birebir kopyası olmalıdır.
+
 ### Testler
 
 ```bash
@@ -112,5 +125,6 @@ Testler bellek içi SQLite kullanır, `DATABASE_URL` gerekmez.
 | Annotation şeması ve gönderim doğrulaması | `app/sema.py` |
 | Versiyonlu etiket listeleri ve tohum etiketler | `app/etiketler.py` |
 | Yeniden kontrol listesi | `app/yeniden_kontrol.py` |
+| AI taslakları ve formun önceden doldurulması | `app/ai_taslak.py` |
 | Uyum ölçüleri (Cohen's kappa, MASI ile Krippendorff's alpha) | `app/olcum.py` |
 | Denetim kaydı | `app/denetim.py` |
