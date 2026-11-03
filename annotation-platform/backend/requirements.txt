@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
 sqlmodel
+psycopg[binary]
 python-multipart
 pyjwt
 pwdlib[argon2]

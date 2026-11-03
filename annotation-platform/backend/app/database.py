@@ -9,7 +9,7 @@ DATABASE_URL = os.getenv(
     "postgresql://username:password@host:port/database_name"
 )
 
-engine = create_engine(DATABASE_URL, echo=True)  # echo=True ile SQL sorguları loglanır
+engine = create_engine(DATABASE_URL, echo=True, pool_pre_ping=True)  # echo=True ile SQL sorguları loglanır, pool_pre_ping kopmuş bağlantıyı yeniler
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
