@@ -1,5 +1,6 @@
 """Veritabanı kayıtlarından sözleşmedeki yanıt nesnelerini üreten yardımcılar."""
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlmodel import Session, select
@@ -7,6 +8,12 @@ from sqlmodel import Session, select
 from app.kurallar import MemeBaglami
 from app.models import LabelListVersion, Meme, User
 from app.sema import bos_icerik
+
+
+def iso_zaman(zaman: datetime) -> str:
+    """JSON satırları için ISO 8601 UTC (2026-10-15T08:58:00Z); SQLite'tan gelen naive zaman UTC sayılır."""
+    zaman = zaman.replace(tzinfo=timezone.utc) if zaman.tzinfo is None else zaman.astimezone(timezone.utc)
+    return zaman.isoformat().replace("+00:00", "Z")
 
 
 def kullanicilar(session: Session) -> dict[str, User]:
@@ -38,6 +45,8 @@ def meme(meme: Meme, baglam, kisiler: dict[str, User], kullanici: User) -> dict:
         "gold_var": baglam.gold_var(meme.id),
         "ad": baglam.ad(meme.id),
         "acik_yorum_sayisi": baglam.acik_yorum_sayisi(meme.id, kullanici.id),
+        "vlm_taslak": meme.vlm_taslak,
+        "ai_taslagi_var": meme.id in baglam.ai_taslaklari,
     }
 
 

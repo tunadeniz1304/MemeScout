@@ -43,6 +43,9 @@ class Meme(SQLModel, table=True):
     sha256: str = Field(unique=True, index=True)
     yukleyen_id: str = Field(foreign_key="user.id")
     yuklenme_zamani: datetime = Field(default_factory=simdi)
+    # Görselin yorumsuz tarifi (VLM ya da AI taslağından); bir kez dolar, sonra değişmez.
+    # Canlıdaki tabloya sonradan eklendi: ALTER TABLE meme ADD COLUMN vlm_taslak VARCHAR
+    vlm_taslak: Optional[str] = None
 
 class MemeImage(SQLModel, table=True):
     # Görsel ayrı tabloda tutulur; meme listesi sorguları baytları taşımaz.
@@ -51,6 +54,18 @@ class MemeImage(SQLModel, table=True):
     meme_id: str = Field(primary_key=True, foreign_key="meme.id")
     icerik_tipi: str
     veri: bytes = Field(sa_column=Column(LargeBinary, nullable=False))
+
+class AiDraft(SQLModel, table=True):
+    # LLM'in hazırladığı kart (ADR-0010). Ham kart değiştirilmeden saklanır; annotator'ın ne kadar
+    # düzelttiği bununla ölçülür. `icerik`, kartın şema alanlarıdır ve formu önceden doldurur.
+    __tablename__ = "ai_draft"
+
+    meme_id: str = Field(primary_key=True, foreign_key="meme.id")
+    kaynak: str
+    kart: dict = Field(sa_column=json_sutunu())
+    icerik: dict = Field(sa_column=json_sutunu())
+    yukleyen_id: str = Field(foreign_key="user.id")
+    olusturma_zamani: datetime = Field(default_factory=simdi)
 
 class Annotation(SQLModel, table=True):
     id: str = Field(default_factory=yeni_id, primary_key=True)

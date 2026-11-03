@@ -18,6 +18,7 @@ from app.models import (
     GONDERILDI,
     ONAYLANDI,
     REVIZYON_GEREKLI,
+    AiDraft,
     Annotation,
     Comment,
     GoldRecord,
@@ -143,10 +144,13 @@ class MemeBaglami:
         ).order_by(Annotation.atanma_zamani, Annotation.id)
         gold_sorgusu = select(GoldRecord.meme_id, GoldRecord.icerik["ad"].as_string())
         yorum_sorgusu = select(Comment.meme_id, Comment.yazan_id).where(Comment.cozuldu == False)  # noqa: E712
+        taslak_sorgusu = select(AiDraft.meme_id)
         if meme_idleri is not None:
             annotation_sorgusu = annotation_sorgusu.where(Annotation.meme_id.in_(meme_idleri))
             gold_sorgusu = gold_sorgusu.where(GoldRecord.meme_id.in_(meme_idleri))
             yorum_sorgusu = yorum_sorgusu.where(Comment.meme_id.in_(meme_idleri))
+            taslak_sorgusu = taslak_sorgusu.where(AiDraft.meme_id.in_(meme_idleri))
+        self.ai_taslaklari = set(session.exec(taslak_sorgusu).all())
 
         self.annotationlar: dict[str, list] = {}
         for satir in session.exec(annotation_sorgusu).all():

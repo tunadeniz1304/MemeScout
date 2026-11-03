@@ -8,7 +8,7 @@ from app.database import get_session
 from app.denetim import ANNOTATION, GUNCELLEME, OLUSTURMA, denetle
 from app.errors import ApiHatasi
 from app.kurallar import aktif_mi, cift_etiket_mi, grubu
-from app.models import ATLANDI, Annotation, GoldRecord, Meme, User
+from app.models import ATLANDI, AiDraft, Annotation, GoldRecord, Meme, User
 from app.schemas import (
     AnnotationSummaryOut,
     AssignmentCreate,
@@ -90,6 +90,20 @@ def elle_ata(
             detay={"meme_ids": sorted(goldlu)},
         )
 
+    # AI taslağı olan meme tek etiketli kalır: kalibrasyona ve çift etiketlemeye alınmaz (ADR-0010).
+    ai_memeler = set(session.exec(select(AiDraft.meme_id).where(AiDraft.meme_id.in_(veri.meme_ids))).all())
+    engellenen = [
+        meme_id for meme_id in veri.meme_ids
+        if meme_id in ai_memeler
+        and (veri.kalibrasyon or veri.cift_etiket or grubu(mevcutlar[meme_id], False))
+    ]
+    if engellenen:
+        raise ApiHatasi(
+            409, "AI_TASLAKLI_MEME",
+            "AI taslağı olan meme kalibrasyona ya da çift etiketlemeye alınamaz.",
+            detay={"meme_ids": engellenen},
+        )
+
     zaten_atanmis, terfi_edecekler = [], []
     for meme_id in veri.meme_ids:
         tur = [a for a in mevcutlar[meme_id] if a.kalibrasyon == veri.kalibrasyon]
@@ -127,14 +141,15 @@ def elle_ata(
     return [cikti.annotation_ozeti(annotation, kisiler) for annotation in yeniler]
 
 
-def dagitim_plani(memeler: list[Meme], kalibrasyondakiler: set[str], annotatorlar: list[User], oran: float):
+def dagitim_plani(memeler: list[Meme], cift_disi: set[str], annotatorlar: list[User], oran: float):
     """Atanmamış meme'leri böler; `oran` kadarını tüm ikililere dengeli dağıtarak çift etiketler.
 
     Plan veriye göre belirlenir: aynı veritabanında dry_run ile görülen plan uygulananla aynıdır.
     """
     ikililer = list(combinations([kisi.id for kisi in annotatorlar], 2))
-    # Kalibrasyonda herkes birbirinin etiketini gördü; bu meme'ler bağımsız çift etiketlemeye uygun değil.
-    adaylar = sorted((meme for meme in memeler if meme.id not in kalibrasyondakiler), key=lambda meme: meme.sha256)
+    # Kalibrasyonda herkes birbirinin etiketini gördü, AI taslaklı meme'de form taslakla dolu gelir;
+    # ikisi de bağımsız çift etiketlemeye uygun değil.
+    adaylar = sorted((meme for meme in memeler if meme.id not in cift_disi), key=lambda meme: meme.sha256)
     cift_sayisi = min(int(len(memeler) * oran + 0.5), len(adaylar))
     ciftler = adaylar[:cift_sayisi]
 
@@ -168,12 +183,13 @@ def otomatik_ata(
     annotatorlar = kullanicilari_dogrula(session, veri.annotator_ids, "annotator_ids")
     ana_turdakiler = set(session.exec(select(Annotation.meme_id).where(Annotation.kalibrasyon == False)).all())  # noqa: E712
     kalibrasyondakiler = set(session.exec(select(Annotation.meme_id).where(Annotation.kalibrasyon == True)).all())  # noqa: E712
+    ai_memeler = set(session.exec(select(AiDraft.meme_id)).all())
     goldlu = set(session.exec(select(GoldRecord.meme_id)).all())
     atanmamislar = [
         meme for meme in session.exec(select(Meme).order_by(Meme.id)).all()
         if meme.id not in ana_turdakiler and meme.id not in goldlu
     ]
-    atamalar, yuk, ikili_yuku = dagitim_plani(atanmamislar, kalibrasyondakiler, annotatorlar, veri.cift_etiket_orani)
+    atamalar, yuk, ikili_yuku = dagitim_plani(atanmamislar, kalibrasyondakiler | ai_memeler, annotatorlar, veri.cift_etiket_orani)
 
     if not veri.dry_run:
         for meme_id, kisi_idleri in atamalar.items():

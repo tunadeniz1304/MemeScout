@@ -124,6 +124,8 @@ class MemeOut(BaseModel):
     gold_var: bool
     ad: Optional[str] = None
     acik_yorum_sayisi: int
+    vlm_taslak: Optional[str] = None
+    ai_taslagi_var: bool = False
 
 
 class AnnotationSummaryOut(BaseModel):
@@ -156,6 +158,35 @@ class RejectedFileOut(BaseModel):
 class BulkUploadResultOut(BaseModel):
     yuklenen: list[MemeOut]
     reddedilen: list[RejectedFileOut]
+
+
+class AiDraftIn(BaseModel):
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    kaynak: str = Field(default="llm", min_length=1, max_length=100)
+    kart: dict
+
+
+class AiDraftImportIn(BaseModel):
+    taslaklar: list[AiDraftIn] = Field(min_length=1, max_length=500)
+
+
+class AiDraftAddedOut(BaseModel):
+    sha256: str
+    meme_id: str
+    vlm_taslak_dolduruldu: bool
+    ihlaller: list[FieldErrorOut]
+
+
+class AiDraftRejectedOut(BaseModel):
+    sha256: str
+    meme_id: Optional[str] = None
+    sebep: Literal["meme_yok", "tekrar", "zaten_var", "gold_var", "kalibrasyonda", "cift_etiketli", "etiketleme_baslamis"]
+    mesaj: str
+
+
+class AiDraftImportResultOut(BaseModel):
+    eklenen: list[AiDraftAddedOut]
+    reddedilen: list[AiDraftRejectedOut]
 
 
 # ------------------------------------------------------------------ atama

@@ -7,14 +7,25 @@ from fastapi.responses import Response
 from sqlmodel import Session, select
 
 from app import cikti, gorsel
+from app.ai_taslak import karttan_icerik, taslak_engeli
 from app.database import get_session
-from app.denetim import MEME, OLUSTURMA, denetle
+from app.denetim import GUNCELLEME, MEME, OLUSTURMA, denetle
 from app.errors import ApiHatasi
+from app.etiketler import guncel_liste
 from app.kurallar import MemeBaglami
 from app.metin import tr_kucuk
-from app.models import Annotation, Meme, MemeImage, User
-from app.schemas import BulkUploadResultOut, MemeDetailOut, MemeEtiketDurumu, MemeOut, MemePageOut
+from app.models import AiDraft, Annotation, GoldRecord, Meme, MemeImage, User
+from app.schemas import (
+    AiDraftImportIn,
+    AiDraftImportResultOut,
+    BulkUploadResultOut,
+    MemeDetailOut,
+    MemeEtiketDurumu,
+    MemeOut,
+    MemePageOut,
+)
 from app.security import admin_kullanici, aktif_kullanici
+from app.sema import icerik_dogrula
 
 router = APIRouter(prefix="/api/v1/memes", tags=["memes"])
 
@@ -146,6 +157,58 @@ def toplu_yukle(
             yuklenenler.append(meme)
     yukleme.kaydet()
     return {"yuklenen": cikti.memeler(session, yuklenenler, yonetici), "reddedilen": reddedilenler}
+
+
+@router.post("/ai-drafts", response_model=AiDraftImportResultOut)
+def ai_taslaklarini_ekle(
+    veri: AiDraftImportIn,
+    session: Session = Depends(get_session),
+    yonetici: User = Depends(admin_kullanici),
+):
+    """LLM kartlarını görselin sha256'sıyla meme'lere taslak olarak bağlar (ADR-0010)."""
+    sha_listesi = {taslak.sha256 for taslak in veri.taslaklar}
+    memeler = {meme.sha256: meme for meme in session.exec(select(Meme).where(Meme.sha256.in_(sha_listesi))).all()}
+    meme_idleri = [meme.id for meme in memeler.values()]
+    taslaklilar = set(session.exec(select(AiDraft.meme_id).where(AiDraft.meme_id.in_(meme_idleri))).all())
+    goldlular = set(session.exec(select(GoldRecord.meme_id).where(GoldRecord.meme_id.in_(meme_idleri))).all())
+    annotationlar: dict[str, list] = {}
+    sorgu = select(Annotation.meme_id, Annotation.durum_kodu, Annotation.cift_etiket, Annotation.kalibrasyon)
+    for satir in session.exec(sorgu.where(Annotation.meme_id.in_(meme_idleri))).all():
+        annotationlar.setdefault(satir.meme_id, []).append(satir)
+    etiketler = guncel_liste(session).alanlar
+
+    eklenenler, reddedilenler, gorulenler = [], [], set()
+    for taslak in veri.taslaklar:
+        meme = memeler.get(taslak.sha256)
+        if taslak.sha256 in gorulenler:
+            sorun = ("tekrar", "Aynı görsel bu istekte birden fazla kartta geçiyor; ilki alındı.")
+        elif meme is None:
+            sorun = ("meme_yok", "Bu görselle yüklenmiş bir meme yok; görsel önce yüklenmeli.")
+        else:
+            sorun = taslak_engeli(meme.id in taslaklilar, meme.id in goldlular, annotationlar.get(meme.id, []))
+        gorulenler.add(taslak.sha256)
+        if sorun:
+            reddedilenler.append({"sha256": taslak.sha256, "meme_id": meme.id if meme else None, "sebep": sorun[0], "mesaj": sorun[1]})
+            continue
+
+        icerik = karttan_icerik(taslak.kart)
+        session.add(AiDraft(meme_id=meme.id, kaynak=taslak.kaynak, kart=taslak.kart, icerik=icerik, yukleyen_id=yonetici.id))
+        taslaklilar.add(meme.id)
+        denetle(session, yonetici.id, MEME, meme.id, OLUSTURMA, alan="ai_taslagi", yeni={"kaynak": taslak.kaynak})
+        vlm_dolduruldu = meme.vlm_taslak is None and bool((icerik["vlm_aciklama"] or "").strip())
+        if vlm_dolduruldu:
+            # VLM taslağı bir kez dolar; zaten doluysa kartın tarifi onun yerine geçmez.
+            meme.vlm_taslak = icerik["vlm_aciklama"]
+            denetle(session, yonetici.id, MEME, meme.id, GUNCELLEME, alan="vlm_taslak", eski=None, yeni=meme.vlm_taslak)
+        eklenenler.append({
+            "sha256": taslak.sha256,
+            "meme_id": meme.id,
+            "vlm_taslak_dolduruldu": vlm_dolduruldu,
+            # Kart kurallara uymasa da alınır; annotator gönderirken bu eksikleri düzeltir.
+            "ihlaller": icerik_dogrula(icerik, etiketler),
+        })
+    session.commit()
+    return {"eklenen": eklenenler, "reddedilen": reddedilenler}
 
 
 @router.get("/{meme_id}", response_model=MemeDetailOut)

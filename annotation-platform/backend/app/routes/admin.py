@@ -9,7 +9,7 @@ from sqlmodel import Session, select
 from app import cikti
 from app.database import get_session
 from app.kurallar import annotation_gorebilir_mi, gold_gorebilir_mi
-from app.models import Annotation, AuditEntry, GoldRecord, Meme, TestQuery, User
+from app.models import AiDraft, Annotation, AuditEntry, GoldRecord, Meme, TestQuery, User
 from app.schemas import AnnotationOut, AuditPageOut, KayitTipi, RecheckItemOut, TestQueryOut
 from app.security import admin_kullanici, aktif_kullanici
 from app.sema import ALAN_KURALLARI, bos_icerik
@@ -138,16 +138,32 @@ def sorgu_seti_satirlari(session: Session, kisiler: dict[str, User]) -> list[dic
     return satirlar
 
 
+def ai_taslak_satirlari(session: Session, kisiler: dict[str, User]) -> list[dict]:
+    memeler = {meme.id: meme for meme in session.exec(select(Meme)).all()}
+    return [
+        {
+            "id": taslak.meme_id,
+            "gorsel": memeler[taslak.meme_id].gorsel_yolu,
+            "kaynak": taslak.kaynak,
+            "kart": taslak.kart,
+            "icerik": {**bos_icerik(), **taslak.icerik},
+            "olusturma_zamani": cikti.iso_zaman(taslak.olusturma_zamani),
+        }
+        for taslak in session.exec(select(AiDraft).order_by(AiDraft.meme_id)).all()
+    ]
+
+
 DISA_AKTARIMLAR = {
     "gold.jsonl": gold_satirlari,
     "annotations_raw.jsonl": annotation_satirlari,
     "test_set.jsonl": sorgu_seti_satirlari,
+    "ai_drafts.jsonl": ai_taslak_satirlari,
 }
 
 
 @router.get("/export/{dosya}")
 def disa_aktar(
-    dosya: Literal["gold.jsonl", "annotations_raw.jsonl", "test_set.jsonl"],
+    dosya: Literal["gold.jsonl", "annotations_raw.jsonl", "test_set.jsonl", "ai_drafts.jsonl"],
     session: Session = Depends(get_session),
     _: User = Depends(admin_kullanici),
 ):
