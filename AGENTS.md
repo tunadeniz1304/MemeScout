@@ -4,7 +4,7 @@ Instructions for AI coding agents (Claude Code, Cursor, Copilot, Codex, etc.) wo
 
 ## Project Status
 
-The project scope and tech stack are not decided yet. Until the sections marked `TODO` below are filled in, do not introduce a framework, language, or dependency without the user explicitly asking for it.
+MemeScout is a Turkish meme search assistant (see [README.md](README.md) and [BRIEF.md](BRIEF.md)). The design lives in `docs/`. The annotation platform in `annotation-platform/` is in development, and the search pipeline is designed but not implemented yet. Do not introduce a framework, language, or dependency beyond the stack in the README without the user explicitly asking for it.
 
 ## Hard Rules
 
@@ -40,21 +40,17 @@ gh pr create --title "feat(scope): summary" --body-file <filled PR template>
 
 ## Commands
 
-<!-- TODO: fill in once the tech stack is chosen -->
-
 | Task         | Command |
 | ------------ | ------- |
-| Install      | TODO    |
-| Run locally  | TODO    |
-| Test         | TODO    |
-| Lint/format  | TODO    |
-| Build        | TODO    |
+| Install      | `pip install -r annotation-platform/backend/requirements.txt` and `npm install --prefix annotation-platform/frontend` |
+| Run locally  | `uvicorn app.main:app --reload` (from `annotation-platform/backend`, needs `DATABASE_URL`) and `npm run dev` (from `annotation-platform/frontend`) |
+| Test         | `pytest` (from `annotation-platform/backend`) |
+| Lint/format  | None yet |
+| Build        | `npm run build` (from `annotation-platform/frontend`) |
 
 Run tests and lint before every commit once these exist.
 
 ## Code Conventions
-
-<!-- TODO: language-specific style, folder structure, naming, error handling, testing approach -->
 
 - Follow `.editorconfig` (UTF-8, LF, 2-space indent; 4 for Python/Java/Kotlin/C#).
 - Match the style of surrounding code.

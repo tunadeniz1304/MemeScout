@@ -1,8 +1,8 @@
 <div align="center">
 
-# Project Name
+# MemeScout
 
-**One-sentence description of what the project does and who it is for.**
+**An agentic meme assistant that understands Turkish situations and chats, finds memes that fit, and explains each pick.**
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![PR Checks](https://github.com/tunadeniz1304/SENG_429/actions/workflows/pr-checks.yml/badge.svg)](https://github.com/tunadeniz1304/SENG_429/actions/workflows/pr-checks.yml)
@@ -13,9 +13,6 @@
 </div>
 
 ---
-
-> [!NOTE]
-> This README is a template. Replace every `TODO` and placeholder once the project scope is defined.
 
 ## Table of Contents
 
@@ -35,38 +32,53 @@
 - [Contributing](#contributing)
 - [Team](#team)
 - [License](#license)
-- [Acknowledgements](#acknowledgements)
 
 ## Overview
 
-TODO: Describe the problem, the target users, and how this project solves it (2–4 sentences).
+MemeScout helps content teams and everyday users find a Turkish meme that fits a situation or a chat. Unlike plain semantic search, it looks at the feeling behind the message, not only the topic, and explains each pick.
 
 This project is developed as part of the **SENG 429** course.
 
-<!-- Screenshot or demo GIF: ![Demo](docs/assets/demo.gif) -->
+> **Status:** The search pipeline is designed (see [docs/architecture.md](docs/architecture.md)); the annotation platform is in development.
 
 ## Features
 
-- [ ] TODO: Feature 1
-- [ ] TODO: Feature 2
-- [ ] TODO: Feature 3
+**Search** (designed, see [docs/architecture.md](docs/architecture.md))
+
+- [ ] Situation or chat → meme: Router, Context Agent, hybrid search and an LLM reranker
+- [ ] Description → meme: search by visual description and keywords
+- [ ] A "why this meme" note for every result
+- [ ] Refine loop: "daha alaycı olsun" (more sarcastic), "daha az kaba" (less crude)
+- [ ] Content warning labels (political, crude, sensitive): flagged, never hidden
+
+**Annotation platform** (in development)
+
+- [x] API contract shared by frontend and backend ([openapi.yaml](annotation-platform/openapi.yaml))
+- [x] Login and user management
+- [ ] Blind double labeling, review and gold records
+- [ ] Leakage check for test queries
+
+**Evaluation** (planned)
+
+- [ ] Comparison with keyword search, plain semantic search, an LLM-free multi-vector baseline and a single-LLM baseline
 
 ## Tech Stack
 
-| Layer          | Technology |
-| -------------- | ---------- |
-| Frontend       | TODO       |
-| Backend        | TODO       |
-| Database       | TODO       |
-| Infrastructure | TODO       |
-| Testing        | TODO       |
+| Layer          | Technology                                        |
+| -------------- | ------------------------------------------------- |
+| Frontend       | React, Vite                                       |
+| Backend        | Python, FastAPI, SQLModel                         |
+| Database       | PostgreSQL (SQLite in tests)                      |
+| Search         | bge-m3 embeddings, Qdrant, LLM reranker (planned) |
+| Infrastructure | Render                                            |
+| Testing        | pytest                                            |
 
 ## Getting Started
 
 ### Prerequisites
 
-- TODO: runtime / SDK and version (e.g. Node.js >= 20, Python >= 3.12)
-- TODO: package manager
+- Python 3.11+ and pip
+- Node.js 20.19+ or 22.12+ and npm
 - Git
 
 ### Installation
@@ -74,20 +86,17 @@ This project is developed as part of the **SENG 429** course.
 ```bash
 git clone https://github.com/tunadeniz1304/SENG_429.git
 cd SENG_429
-# TODO: install dependencies
+pip install -r annotation-platform/backend/requirements.txt
+npm install --prefix annotation-platform/frontend
 ```
 
 ### Configuration
 
-Copy the example environment file and fill in the values:
+The backend does not start without `DATABASE_URL`. For local development, create `annotation-platform/backend/.env` with:
 
 ```bash
-cp .env.example .env
+DATABASE_URL=sqlite:///./memescout.db
 ```
-
-| Variable   | Description | Required | Default |
-| ---------- | ----------- | -------- | ------- |
-| `TODO_VAR` | TODO        | Yes      | –       |
 
 > [!WARNING]
 > Never commit `.env` or any secret. It is ignored by `.gitignore`.
@@ -95,41 +104,56 @@ cp .env.example .env
 ### Running Locally
 
 ```bash
-# TODO: command to start the app
+uvicorn app.main:app --reload   # from annotation-platform/backend
+npm run dev                     # from annotation-platform/frontend
 ```
 
 ## Usage
 
-TODO: Show the main use cases with examples, screenshots, or API calls.
+The annotation platform runs locally (see [Getting Started](#getting-started)); the search pipeline is designed in [docs/architecture.md](docs/architecture.md).
 
 ## Testing
 
 ```bash
-# TODO: command to run tests
+pytest                          # from annotation-platform/backend
 ```
 
 ## Architecture
 
-TODO: High-level description of components and how they interact. Detailed design documents live in [`docs/`](docs/).
+MemeScout has two parts. The annotation platform builds the labeled meme dataset. The search pipeline (designed, not implemented yet) reads that dataset from two indexes and answers queries. Details are in [docs/architecture.md](docs/architecture.md), [docs/annotation.md](docs/annotation.md) and the decision records in [docs/adr/](docs/adr/).
 
 ```mermaid
 flowchart LR
-    User --> Client[TODO: Client]
-    Client --> API[TODO: API]
-    API --> DB[(TODO: Database)]
+    User --> Router{"Router"}
+    Router -->|situation or chat| CA["Context Agent"] --> Hybrid["Hybrid search"] --> RRF["RRF: top ~30"] --> Rerank["LLM reranker"] --> Result["5 memes + why"]
+    Result -.->|refine| CA
+    Router -->|description| Desc["Description search"] --> RRF2["RRF"] --> List["Top 5 + show more"]
+    Annotator --> UI["Annotation UI (React)"] --> API["Annotation API (FastAPI)"] --> DB[("PostgreSQL")]
+    DB -->|gold records| Index[("Keyword index + vector DB")]
+    Index --> Hybrid
+    Index --> Desc
 ```
+
+The full pipeline, including the preparation steps (in Turkish):
+
+![MemeScout pipeline](docs/assets/memescout-pipeline.png)
 
 ## Project Structure
 
 ```text
 .
-├── .github/          # CI workflows, PR/issue templates, CODEOWNERS
-├── docs/             # Design docs, diagrams, reports
-├── src/              # TODO: source code
-├── tests/            # TODO: tests
+├── .github/              # CI workflows, PR/issue templates, CODEOWNERS
+├── annotation-platform/  # Annotation platform for building the dataset
+│   ├── backend/          # FastAPI API server and tests
+│   ├── frontend/         # React + Vite annotation UI
+│   └── openapi.yaml      # API contract shared by both sides
+├── docs/                 # Architecture, annotation guide, ADRs, images
+├── AGENTS.md             # Rules for AI coding agents
+├── BRIEF.md              # Project brief
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
 ├── LICENSE
+├── NOTICE
 └── README.md
 ```
 
@@ -137,13 +161,14 @@ flowchart LR
 
 Development is organized into phases. Each phase ends with a tagged release (`v0.<phase>.0`).
 
-| Phase | Goal | Status |
-| ----- | ---- | ------ |
-| P1    | TODO | Planned |
-| P2    | TODO | Planned |
-| P3    | TODO | Planned |
+| Phase | Goal                                                            | Status      |
+| ----- | --------------------------------------------------------------- | ----------- |
+| P1    | Design: architecture, annotation guide, API contract            | Done        |
+| P2    | Dataset: annotation platform, ~300 labeled memes, gold records  | In progress |
+| P3    | Search pipeline: Router, Context Agent, hybrid search, reranker | Planned     |
+| P4    | Evaluation and demo: test set, baselines, metrics, final report | Planned     |
 
-See [open issues](https://github.com/tunadeniz1304/SENG_429/issues) and [milestones](https://github.com/tunadeniz1304/SENG_429/milestones) for details.
+See [open issues](https://github.com/tunadeniz1304/SENG_429/issues) for details.
 
 ## Contributing
 
@@ -156,18 +181,13 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow before opening a P
 
 ## Team
 
-| Name | Role | GitHub |
-| ---- | ---- | ------ |
-| TODO | TODO | [@tunadeniz1304](https://github.com/tunadeniz1304) |
-| TODO | TODO | TODO |
-| TODO | TODO | TODO |
-| TODO | TODO | TODO |
+| Name            | GitHub                                             |
+| --------------- | -------------------------------------------------- |
+| Tuna Deniz      | [@tunadeniz1304](https://github.com/tunadeniz1304) |
+| Sena Nur Pekgöz | [@senanurpekgoz](https://github.com/senanurpekgoz) |
+| Ceren Kızılay   | [@cerenkizilay](https://github.com/cerenkizilay)   |
+| Esma Çalış      | [@esmaesss](https://github.com/esmaesss)           |
 
 ## License
 
 Distributed under the Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
-
-## Acknowledgements
-
-- SENG 429 course staff
-- TODO: libraries, resources, or people to credit
