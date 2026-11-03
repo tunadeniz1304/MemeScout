@@ -8,3 +8,4 @@
 .keyboard-help{font-size:9px;color:#9a9fac;margin:14px 0 0;text-align:right}
 .auth-toggle{display:block;width:100%;margin:15px 0 0;border:0;background:transparent;color:#665bd1;font-size:11px;font-weight:700;padding:6px}.auth-toggle:hover{text-decoration:underline}
 .tag-option.stale{border-style:dashed;border-color:#efc9c1;background:#fff6f4;color:#b0584a}.tag-option.stale>span{color:#b0584a}
+.draft-callout{display:flex;gap:10px;padding:11px 12px;border-radius:8px;background:#f0f6ff;border:1px solid #d3e3fb;margin-bottom:14px;color:#3d6fb8}.draft-callout>span{font-size:15px}.draft-callout strong{font-size:11px;color:#2f5a99}.draft-callout p{margin:3px 0 0;color:#5d7aa3;font-size:10px;line-height:1.45}
