@@ -97,3 +97,15 @@ def test_kullanici_olusturma_denetim_kaydina_yazilir(client, session, kullanici_
     assert kayit.kayit_id == yanit.json()["id"]
     assert kayit.islem == "olusturma"
     assert kayit.yeni_deger == {"kullanici_adi": "yeniuye", "gorunen_ad": "Yeni", "takma_ad": "a9", "admin": False}
+
+
+def test_vercel_onizlemesi_canli_veritabanina_baglanmaz(monkeypatch):
+    from app.database import veritabani_adresi
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql://canli/veritabani")
+    monkeypatch.setenv("VERCEL_ENV", "preview")
+    assert veritabani_adresi() == "sqlite://"
+    monkeypatch.setenv("VERCEL_ENV", "production")
+    assert veritabani_adresi() == "postgresql://canli/veritabani"
+    monkeypatch.delenv("VERCEL_ENV")
+    assert veritabani_adresi() == "postgresql://canli/veritabani"

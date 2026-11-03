@@ -6,10 +6,20 @@ from dotenv import load_dotenv
 
 load_dotenv()  # Ortam değişkenlerini .env dosyasından yükler
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://username:password@host:port/database_name"
-)
+
+def veritabani_adresi() -> str:
+    if os.getenv("VERCEL_ENV") == "preview":
+        # Vercel önizleme sürümleri canlı veritabanına dokunmasın: tablo oluşturma ya da deneme verisi
+        # canlıya gitmesin diye DATABASE_URL tanımlı olsa da boş, bellek içi SQLite ile açılırlar.
+        print("Önizleme sürümü: DATABASE_URL yerine bellek içi SQLite kullanılıyor.", flush=True)
+        return "sqlite://"
+    return os.getenv(
+        "DATABASE_URL",
+        "postgresql://username:password@host:port/database_name"
+    )
+
+
+DATABASE_URL = veritabani_adresi()
 
 
 def motor_ayarlari(url: str) -> dict:

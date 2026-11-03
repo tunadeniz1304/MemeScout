@@ -72,6 +72,8 @@ uvicorn app.main:app --reload
 
 Değişkenler ortamdan ya da `annotation-platform/backend/.env` dosyasından okunur; `.env` repoya girmez.
 
+Vercel önizleme sürümleri (`VERCEL_ENV=preview`) `DATABASE_URL` tanımlı olsa bile canlı veritabanına bağlanmaz; boş, bellek içi SQLite ile açılır. Böylece bir branch'in önizlemesi canlıda tablo oluşturamaz ve deneme verisi yazamaz.
+
 Sunucu açılırken eksik tabloları oluşturur ve etiket listesinin ilk versiyonunu (v1) yazar. PostgreSQL'de RLS'i kapalı olan uygulama tablolarında RLS'i açar: Supabase'in herkese açık API'si politika olmadan bu tablolara erişemez, backend ise tablo sahibi rolüyle bağlandığı için etkilenmez. Bu adım var olan tabloya kolon eklemez; bir modelin kolonları değişirse canlı veritabanı için ayrıca migration gerekir.
 
 Görseller `meme_image` tablosunda (PostgreSQL'de `bytea`) tutulur, çünkü Vercel'de disk kalıcı değildir.
