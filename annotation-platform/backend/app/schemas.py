@@ -298,3 +298,36 @@ class QueueItemOut(BaseModel):
     kalibrasyon: bool
     guncellenme_zamani: Optional[Zaman] = None
     revizyon_notu: Optional[str] = None
+
+
+# ------------------------------------------------------------------ yorum
+
+YorumTuru = Literal["soru", "kilavuz_onerisi", "kopya_suphesi", "hata"]
+
+
+class CommentCreateIn(BaseModel):
+    alan: Optional[str] = None
+    metin: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+    tur: YorumTuru
+
+
+class CommentUpdateIn(BaseModel):
+    cozuldu: bool
+
+
+class CommentOut(BaseModel):
+    id: str
+    meme_id: str
+    alan: Optional[str] = None
+    yazan: Optional[UserRefOut]
+    zaman: Zaman
+    metin: str
+    tur: YorumTuru
+    cozuldu: bool
+
+
+class CommentPageOut(BaseModel):
+    ogeler: list[CommentOut]
+    toplam: int
+    sayfa: int
+    boyut: int

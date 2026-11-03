@@ -179,3 +179,21 @@ def meme_annotationlari(session: Session, meme_id: str) -> list:
         Annotation.gonderme_zamani,
     ).where(Annotation.meme_id == meme_id)
     return session.exec(sorgu).all()
+
+
+def gizli_yorum_yazarlari(session: Session, kullanici_id: str) -> dict[str, set[str]]:
+    """meme_id → bu kullanıcıdan gizlenen yorum yazarları. Yalnızca kullanıcının
+    annotation'ı olan meme'ler kör etiketlemeye girebilir."""
+    meme_idleri = session.exec(select(Annotation.meme_id).where(Annotation.annotator_id == kullanici_id)).all()
+    if not meme_idleri:
+        return {}
+    meme_bazinda: dict[str, list] = {}
+    sorgu = select(Annotation.meme_id, Annotation.annotator_id, Annotation.durum_kodu, Annotation.kalibrasyon)
+    for satir in session.exec(sorgu.where(Annotation.meme_id.in_(set(meme_idleri)))).all():
+        meme_bazinda.setdefault(satir.meme_id, []).append(satir)
+    gizli = {}
+    for meme_id, annotationlar in meme_bazinda.items():
+        yazarlar = gizli_yazarlar(kullanici_id, annotationlar)
+        if yazarlar:
+            gizli[meme_id] = yazarlar
+    return gizli

@@ -75,3 +75,16 @@ def annotation(annotation, kisiler: dict[str, User]) -> dict:
         "etiket_listesi_versiyonu": annotation.etiket_listesi_versiyonu,
         "surum": annotation.surum,
     }
+
+
+def yorum(yorum, kisiler: dict[str, User]) -> dict:
+    return {
+        "id": yorum.id,
+        "meme_id": yorum.meme_id,
+        "alan": yorum.alan,
+        "yazan": kullanici_ref(kisiler.get(yorum.yazan_id)),
+        "zaman": yorum.zaman,
+        "metin": yorum.metin,
+        "tur": yorum.tur,
+        "cozuldu": yorum.cozuldu,
+    }
