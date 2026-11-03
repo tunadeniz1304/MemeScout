@@ -52,6 +52,7 @@ paths:
     post:
       tags: [auth]
       summary: Üye ol
+      description: Üyelik varsayılan olarak kapalıdır; kapalıyken 403 `KAYIT_KAPALI` döner.
       security: []
       requestBody:
         required: true
@@ -64,6 +65,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/LoginResponse' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
 
   /auth/login:

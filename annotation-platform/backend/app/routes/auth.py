@@ -7,12 +7,17 @@ from app.models import User
 from app.schemas import LoginRequest, LoginResponse, RegisterRequest, UserOut
 from app.security import TOKEN_SURESI_SN, aktif_kullanici, sifre_dogru_mu, sifre_hashle, token_olustur
 
+import os
 import uuid
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 @router.post("/register", response_model=LoginResponse, status_code=201)
 def register(istek: RegisterRequest, session: Session = Depends(get_session)):
+    # Üyelik varsayılan olarak kapalı; açmak için REGISTRATION_OPEN=1 verilir.
+    if os.getenv("REGISTRATION_OPEN") != "1":
+        raise ApiHatasi(403, "KAYIT_KAPALI", "Üyelik şu an kapalı. Hesap için yöneticiyle iletişime geçin.")
+
     mevcut = session.exec(
         select(User).where(User.kullanici_adi == istek.kullanici_adi)
     ).first()
