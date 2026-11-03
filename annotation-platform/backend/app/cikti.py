@@ -5,6 +5,7 @@ from typing import Optional
 from sqlmodel import Session, select
 
 from app.models import LabelListVersion, Meme, User
+from app.sema import bos_icerik
 
 
 def kullanicilar(session: Session) -> dict[str, User]:
@@ -48,4 +49,29 @@ def annotation_ozeti(annotation, kisiler: dict[str, User]) -> dict:
         "cift_etiket": annotation.cift_etiket,
         "kalibrasyon": annotation.kalibrasyon,
         "gonderme_zamani": annotation.gonderme_zamani,
+    }
+
+
+def annotation(annotation, kisiler: dict[str, User]) -> dict:
+    return {
+        "id": annotation.id,
+        "meme_id": annotation.meme_id,
+        "annotator": kullanici_ref(kisiler.get(annotation.annotator_id)),
+        "durum_kodu": annotation.durum_kodu,
+        "cift_etiket": annotation.cift_etiket,
+        "kalibrasyon": annotation.kalibrasyon,
+        # Şemaya sonradan eklenen alanlar eski kayıtlarda da görünsün.
+        "icerik": {**bos_icerik(), **annotation.icerik},
+        "tanidiklik": annotation.tanidiklik,
+        "alan_guveni": annotation.alan_guveni,
+        "atlandi": annotation.atlandi,
+        "revizyon_notu": annotation.revizyon_notu,
+        "atanma_zamani": annotation.atanma_zamani,
+        "baslama_zamani": annotation.baslama_zamani,
+        "gonderme_zamani": annotation.gonderme_zamani,
+        "guncellenme_zamani": annotation.guncellenme_zamani,
+        "harcanan_sure_sn": annotation.harcanan_sure_sn,
+        "sema_versiyonu": annotation.sema_versiyonu,
+        "etiket_listesi_versiyonu": annotation.etiket_listesi_versiyonu,
+        "surum": annotation.surum,
     }

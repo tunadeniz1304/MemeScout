@@ -197,3 +197,104 @@ class AutoAssignPlanOut(BaseModel):
 
 class ReassignRequest(BaseModel):
     yeni_annotator_id: str
+
+
+# ------------------------------------------------------------------ annotation
+
+# Taslakta kurallar uygulanmaz; yalnızca kötüye kullanıma karşı teknik bir üst sınır var.
+TaslakMetni = Annotated[str, StringConstraints(max_length=5000)]
+TaslakListesi = Annotated[list[TaslakMetni], Field(max_length=50)]
+
+
+class AnnotationContentIn(BaseModel):
+    """Taslak içeriği: tüm alanlar opsiyonel, yalnızca gönderilen alanlar güncellenir."""
+
+    tur: Optional[TaslakMetni] = None
+    ad: Optional[TaslakMetni] = None
+    kaynak: Optional[TaslakMetni] = None
+    vlm_aciklama: Optional[TaslakMetni] = None
+    durum: Optional[TaslakMetni] = None
+    ornek_durumlar: Optional[TaslakListesi] = None
+    uygun_olmayan_durumlar: Optional[TaslakListesi] = None
+    kulturel_bilgi: Optional[TaslakMetni] = None
+    anahtar_kelimeler: Optional[TaslakListesi] = None
+    duygu: Optional[TaslakListesi] = None
+    niyet: Optional[TaslakListesi] = None
+    mekanizma: Optional[TaslakListesi] = None
+    uyari: Optional[TaslakListesi] = None
+    notlar: Optional[TaslakMetni] = None
+
+
+class AnnotationDraftIn(BaseModel):
+    surum: int
+    icerik: Optional[AnnotationContentIn] = None
+    tanidiklik: Optional[int] = Field(default=None, ge=1, le=5)
+    alan_guveni: Optional[dict[str, Annotated[int, Field(ge=1, le=3)]]] = None
+    aktif_sure_artis_sn: Optional[int] = Field(default=None, ge=0)
+
+
+class DraftSavedOut(BaseModel):
+    surum: int
+    guncellenme_zamani: Zaman
+    harcanan_sure_sn: int
+
+
+class SubmitIn(BaseModel):
+    surum: int
+
+
+class SkipRequestIn(BaseModel):
+    gerekce: Literal["tanimiyorum", "tanidiklik_dusuk", "uygun_degil", "diger"]
+    aciklama: Optional[str] = Field(default=None, max_length=1000)
+    tanidiklik: Optional[int] = Field(default=None, ge=1, le=5)
+
+
+class SkipInfoOut(BaseModel):
+    gerekce: str
+    aciklama: Optional[str] = None
+
+
+class AnnotationOut(BaseModel):
+    id: str
+    meme_id: str
+    annotator: Optional[UserRefOut]
+    durum_kodu: DurumKodu
+    cift_etiket: bool
+    kalibrasyon: bool
+    icerik: dict
+    tanidiklik: Optional[int] = None
+    alan_guveni: dict[str, int]
+    atlandi: Optional[SkipInfoOut] = None
+    revizyon_notu: Optional[str] = None
+    atanma_zamani: Zaman
+    baslama_zamani: Optional[Zaman] = None
+    gonderme_zamani: Optional[Zaman] = None
+    guncellenme_zamani: Optional[Zaman] = None
+    harcanan_sure_sn: int
+    sema_versiyonu: Optional[str] = None
+    etiket_listesi_versiyonu: Optional[str] = None
+    surum: int
+
+
+class ValidationResultOut(BaseModel):
+    gecerli: bool
+    hatalar: list[FieldErrorOut]
+
+
+class AnnotationVersionOut(BaseModel):
+    surum: int
+    zaman: Zaman
+    degistiren: Optional[UserRefOut]
+    durum_kodu: DurumKodu
+    icerik: dict
+
+
+class QueueItemOut(BaseModel):
+    annotation_id: str
+    meme_id: str
+    kucuk_gorsel_url: str
+    durum_kodu: DurumKodu
+    cift_etiket: bool
+    kalibrasyon: bool
+    guncellenme_zamani: Optional[Zaman] = None
+    revizyon_notu: Optional[str] = None

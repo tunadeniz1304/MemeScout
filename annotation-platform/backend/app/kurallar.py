@@ -165,3 +165,17 @@ class MemeBaglami:
     def acik_yorum_sayisi(self, meme_id: str, kullanici_id: str) -> int:
         gizli = gizli_yazarlar(kullanici_id, self.meme_annotationlari(meme_id))
         return sum(1 for yazan_id in self.acik_yorumlar.get(meme_id, []) if yazan_id not in gizli)
+
+
+def meme_annotationlari(session: Session, meme_id: str) -> list:
+    """Kural kontrolleri için bir meme'in annotation'larının süreç alanları."""
+    sorgu = select(
+        Annotation.id,
+        Annotation.meme_id,
+        Annotation.annotator_id,
+        Annotation.durum_kodu,
+        Annotation.cift_etiket,
+        Annotation.kalibrasyon,
+        Annotation.gonderme_zamani,
+    ).where(Annotation.meme_id == meme_id)
+    return session.exec(sorgu).all()
