@@ -1,9 +1,10 @@
 """Sunucuda uygulanan süreç kuralları: kör etiketleme, reviewer kısıtı ve meme durumu.
 
-Bir meme'in annotation'ları iki tura ayrılır: ana tur ve kalibrasyon turu. Kurallar her turda
-ayrı uygulanır. "Grup", bir turdaki atlanmamış annotation'lardır; gruptaki biri henüz
-göndermediyse grup "kör"dür ve gruptaki kişiler birbirinin annotation'ını ve yorumlarını
-göremez (ADR-0003). Kural, meme'in annotator'ı olan admin için de geçerlidir.
+Bir meme'in annotation'ları iki tura ayrılır: ana tur ve kalibrasyon turu. "Grup", bir turdaki
+atlanmamış annotation'lardır; gruptaki biri henüz göndermediyse grup "kör"dür ve gruptaki kişiler
+birbirinin annotation'ını ve yorumlarını göremez (ADR-0003). Kendi annotation'ı açık olan kişi
+(hangi turda olursa olsun) o meme'de başkalarının etiketlerini ve yorumlarını göremez, reviewer
+da olamaz. Kurallar, meme'in annotator'ı olan admin için de geçerlidir.
 """
 
 from typing import Iterable, Optional
@@ -51,8 +52,15 @@ def kor_mu(grup: list) -> bool:
     return any(bekliyor_mu(a) for a in grup)
 
 
+def acik_annotationi_var_mi(kullanici_id: str, meme_annotationlari: list) -> bool:
+    return any(a.annotator_id == kullanici_id and bekliyor_mu(a) for a in meme_annotationlari)
+
+
 def gizli_yazarlar(kullanici_id: str, meme_annotationlari: list) -> set[str]:
     """Bu kullanıcının, bu meme'de yorumlarını göremeyeceği kişiler."""
+    if acik_annotationi_var_mi(kullanici_id, meme_annotationlari):
+        # Kendi etiketini bitirmeyen kişi meme'in diğer annotator'larının yorumlarını görmez.
+        return {a.annotator_id for a in meme_annotationlari if a.annotator_id != kullanici_id}
     gizli: set[str] = set()
     for kendi in meme_annotationlari:
         if kendi.annotator_id != kullanici_id or not aktif_mi(kendi):
@@ -68,10 +76,12 @@ def gizli_yazarlar(kullanici_id: str, meme_annotationlari: list) -> set[str]:
 
 
 def annotation_gorebilir_mi(kullanici: User, annotation, meme_annotationlari: list) -> bool:
-    """Sahibi her zaman görür. Grup kör değilse (hepsi gönderildiyse) herkes görür;
-    kör gruptaki annotation'ı yalnızca o gruba katılmayan admin görür."""
+    """Sahibi her zaman görür. Kendi annotation'ı açık olan kimse görmez. Grup kör değilse
+    (hepsi gönderildiyse) herkes görür; kör gruptaki annotation'ı yalnızca o gruba katılmayan admin görür."""
     if annotation.annotator_id == kullanici.id:
         return True
+    if acik_annotationi_var_mi(kullanici.id, meme_annotationlari):
+        return False
     grup = grubu(meme_annotationlari, annotation.kalibrasyon)
     if not kor_mu(grup):
         return True
@@ -80,12 +90,15 @@ def annotation_gorebilir_mi(kullanici: User, annotation, meme_annotationlari: li
 
 def gold_gorebilir_mi(kullanici_id: str, meme_annotationlari: list) -> bool:
     # Kendi annotation'ı gönderilmemiş annotator gold kaydını göremez.
-    return not any(a.annotator_id == kullanici_id and bekliyor_mu(a) for a in meme_annotationlari)
+    return not acik_annotationi_var_mi(kullanici_id, meme_annotationlari)
 
 
 def reviewer_olabilir_mi(kullanici_id: str, meme_annotationlari: list) -> bool:
-    # Kalibrasyon turunda herkes aynı meme'leri etiketler; reviewer kısıtı ana tura bakar.
-    return not any(a.annotator_id == kullanici_id for a in grubu(meme_annotationlari, False))
+    # Kalibrasyonda herkes aynı meme'leri etiketler; reviewer kısıtı ana tura bakar. Kalibrasyon
+    # annotation'ı hâlâ açık olan kişi de, başkalarının etiketlerini görmemesi için reviewer olamaz.
+    if any(a.annotator_id == kullanici_id for a in grubu(meme_annotationlari, False)):
+        return False
+    return not acik_annotationi_var_mi(kullanici_id, meme_annotationlari)
 
 
 def cift_etiket_mi(meme_annotationlari: list) -> bool:

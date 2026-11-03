@@ -249,3 +249,26 @@ def test_gold_kaydi_kendi_annotationini_gondermeyene_gizli(client, session, yone
     gizli = client.get(f"/api/v1/memes/{meme.id}/gold", headers=basliklar(can))
     assert (gizli.status_code, gizli.json()["hata"]["kod"]) == (403, "KOR_ETIKETLEME")
     assert client.get("/api/v1/memes/m0404/gold", headers=basliklar(ali)).status_code == 404
+
+
+# ------------------------------------------------------------------ iki tur aynı meme'de
+
+def test_kalibrasyon_annotationi_acik_olan_kisi_ana_turu_goremez_ve_inceleyemez(
+    client, session, yonetici, ali, ayse, meme_olustur, annotation_olustur, gonderilmis
+):
+    meme = meme_olustur(yonetici)
+    ana_tur = gonderilmis(meme, ali)
+    kalibrasyon = annotation_olustur(meme, ayse, kalibrasyon=True, durum_kodu="devam_ediyor")
+    client.post(f"/api/v1/memes/{meme.id}/comments", json={"metin": "Ali: ironi bence", "tur": "soru"}, headers=basliklar(ali))
+
+    assert client.get(f"/api/v1/annotations/{ana_tur.id}", headers=basliklar(ayse)).status_code == 403
+    assert client.get(f"/api/v1/memes/{meme.id}/comments", headers=basliklar(ayse)).json() == []
+    assert kuyruk(client, ayse) == []
+    assert gold_gonder(client, ayse, meme.id, [ana_tur.id]).json()["hata"]["kod"] == "REVIEWER_ANNOTATOR_OLAMAZ"
+
+    kalibrasyon.durum_kodu = "gonderildi"
+    session.add(kalibrasyon)
+    session.commit()
+    assert client.get(f"/api/v1/annotations/{ana_tur.id}", headers=basliklar(ayse)).status_code == 200
+    assert [oge["meme_id"] for oge in kuyruk(client, ayse)] == [meme.id]
+    assert gold_gonder(client, ayse, meme.id, [ana_tur.id]).status_code == 201
