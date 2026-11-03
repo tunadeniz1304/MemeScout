@@ -1,3 +1,4 @@
+import hashlib
 import os
 
 # database.py motoru ve security.py anahtarı import anında okur; değerler uygulama import edilmeden önce verilmeli.
@@ -10,8 +11,9 @@ from sqlmodel import Session, SQLModel
 
 from app.database import create_db_and_tables, engine
 from app.main import app
-from app.models import User
+from app.models import Annotation, Meme, MemeImage, User
 from app.security import sifre_hashle
+from tests.yardimci import png_olustur
 
 TEST_SIFRESI = "TestSifre123"
 # Argon2 bilerek yavaş; her test kullanıcısı için yeniden hesaplamamak için bir kez üretilir.
@@ -52,5 +54,41 @@ def kullanici_olustur(session):
         session.commit()
         session.refresh(kullanici)
         return kullanici
+
+    return olustur
+
+
+@pytest.fixture()
+def meme_olustur(session):
+    sayac = {"n": 0}
+
+    def olustur(yukleyen: User) -> Meme:
+        sayac["n"] += 1
+        numara = sayac["n"]
+        veri = png_olustur(numara)
+        meme = Meme(
+            id=f"m{numara:04d}",
+            gorsel_yolu=f"memes/m{numara:04d}.png",
+            sha256=hashlib.sha256(veri).hexdigest(),
+            yukleyen_id=yukleyen.id,
+        )
+        session.add(meme)
+        session.flush()
+        session.add(MemeImage(meme_id=meme.id, icerik_tipi="image/png", veri=veri))
+        session.commit()
+        session.refresh(meme)
+        return meme
+
+    return olustur
+
+
+@pytest.fixture()
+def annotation_olustur(session):
+    def olustur(meme: Meme, annotator: User, **alanlar) -> Annotation:
+        annotation = Annotation(meme_id=meme.id, annotator_id=annotator.id, **alanlar)
+        session.add(annotation)
+        session.commit()
+        session.refresh(annotation)
+        return annotation
 
     return olustur

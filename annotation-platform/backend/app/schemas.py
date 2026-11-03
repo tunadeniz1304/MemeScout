@@ -103,3 +103,56 @@ class LabelUpdate(BaseModel):
     tanim: Optional[DoluMetin] = None
     ornekler: Optional[list[str]] = Field(default=None, max_length=2)
     aktif: Optional[bool] = None
+
+
+# ------------------------------------------------------------------ meme
+
+MemeEtiketDurumu = Literal["atanmadi", "etiketleniyor", "inceleme_bekliyor", "gold_hazir", "yeniden_kontrol"]
+DurumKodu = Literal["atandi", "devam_ediyor", "gonderildi", "revizyon_gerekli", "onaylandi", "atlandi"]
+
+
+class MemeOut(BaseModel):
+    id: str
+    gorsel_url: str
+    kucuk_gorsel_url: str
+    sha256: str
+    yukleyen: Optional[UserRefOut]
+    yuklenme_zamani: Zaman
+    etiket_durumu: MemeEtiketDurumu
+    annotatorlar: list[UserRefOut]
+    cift_etiket: bool
+    gold_var: bool
+    ad: Optional[str] = None
+    acik_yorum_sayisi: int
+
+
+class AnnotationSummaryOut(BaseModel):
+    id: str
+    meme_id: str
+    annotator: Optional[UserRefOut]
+    durum_kodu: DurumKodu
+    cift_etiket: bool
+    kalibrasyon: bool
+    gonderme_zamani: Optional[Zaman] = None
+
+
+class MemeDetailOut(MemeOut):
+    annotasyonlar: list[AnnotationSummaryOut]
+
+
+class MemePageOut(BaseModel):
+    ogeler: list[MemeOut]
+    toplam: int
+    sayfa: int
+    boyut: int
+
+
+class RejectedFileOut(BaseModel):
+    dosya_adi: str
+    sebep: Literal["kopya", "desteklenmeyen_tur", "bozuk_dosya"]
+    mevcut_meme_id: Optional[str] = None
+
+
+class BulkUploadResultOut(BaseModel):
+    yuklenen: list[MemeOut]
+    reddedilen: list[RejectedFileOut]

@@ -4,7 +4,7 @@ from typing import Optional
 
 from sqlmodel import Session, select
 
-from app.models import LabelListVersion, User
+from app.models import LabelListVersion, Meme, User
 
 
 def kullanicilar(session: Session) -> dict[str, User]:
@@ -20,3 +20,32 @@ def kullanici_ref(kullanici: Optional[User]) -> Optional[dict]:
 
 def etiket_listesi(liste: LabelListVersion) -> dict:
     return {"versiyon": liste.versiyon, "olusturma_zamani": liste.olusturma_zamani, "alanlar": liste.alanlar}
+
+
+def meme(meme: Meme, baglam, kisiler: dict[str, User], kullanici: User) -> dict:
+    return {
+        "id": meme.id,
+        "gorsel_url": f"/api/v1/memes/{meme.id}/image",
+        "kucuk_gorsel_url": f"/api/v1/memes/{meme.id}/image?boyut=kucuk",
+        "sha256": meme.sha256,
+        "yukleyen": kullanici_ref(kisiler.get(meme.yukleyen_id)),
+        "yuklenme_zamani": meme.yuklenme_zamani,
+        "etiket_durumu": baglam.durum(meme.id),
+        "annotatorlar": [kullanici_ref(kisiler.get(kisi_id)) for kisi_id in baglam.annotatorlar(meme.id)],
+        "cift_etiket": baglam.cift_etiket(meme.id),
+        "gold_var": baglam.gold_var(meme.id),
+        "ad": baglam.ad(meme.id),
+        "acik_yorum_sayisi": baglam.acik_yorum_sayisi(meme.id, kullanici.id),
+    }
+
+
+def annotation_ozeti(annotation, kisiler: dict[str, User]) -> dict:
+    return {
+        "id": annotation.id,
+        "meme_id": annotation.meme_id,
+        "annotator": kullanici_ref(kisiler.get(annotation.annotator_id)),
+        "durum_kodu": annotation.durum_kodu,
+        "cift_etiket": annotation.cift_etiket,
+        "kalibrasyon": annotation.kalibrasyon,
+        "gonderme_zamani": annotation.gonderme_zamani,
+    }
