@@ -1,11 +1,9 @@
-
-
 from contextlib import asynccontextmanager
 import os
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
 
 from app import models  # noqa: F401
 from app.database import create_db_and_tables
@@ -14,32 +12,61 @@ from app.routes import auth, users
 
 load_dotenv()
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
     yield
+
 
 app = FastAPI(
     title="MemeScout Annotation API",
     version="0.1.0",
     lifespan=lifespan,
 )
-frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+# Sonunda "/" varsa origin eşleşmez, bu yüzden temizliyoruz.
+frontend_url = os.getenv("FRONTEND_URL", "https://seng-429.vercel.app").strip().rstrip("/")
+
+# Router'lardan ÖNCE eklenmeli.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "http://localhost:3000",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         frontend_url,
     ],
-    allow_credentials=False,
+    # Ana domain, git-branch ve deploy'a özel tüm Vercel adreslerine izin verir
+    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["*"],
 )
+
+# --- Geçici debug: hangi Origin'in geldiğini Render loglarında görmek için ---
+# Sorun çözülünce silebilirsiniz. CORS middleware'inden SONRA eklendiği için
+# en dış katmanda çalışır ve preflight istekleri de görünür.
+@app.middleware("http")
+async def log_origin(request, call_next):
+    print(
+        "ORIGIN:", request.headers.get("origin"),
+        "| METHOD:", request.method,
+        "| PATH:", request.url.path,
+        "| REQ-HEADERS:", request.headers.get("access-control-request-headers"),
+        flush=True,
+    )
+    return await call_next(request)
 
 app.add_exception_handler(ApiHatasi, api_hatasi_handler)
 app.include_router(auth.router)
 app.include_router(users.router)
+
+
+@app.get("/")
+def root():
+    return {"durum": "calisiyor", "docs": "/docs"}
+
 
 @app.get("/api/v1/health")
 def health():
