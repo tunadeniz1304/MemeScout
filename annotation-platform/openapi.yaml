@@ -16,12 +16,21 @@ info:
     Sunucu tarafında uygulanması zorunlu kurallar (frontend'e güvenilmez)
     1. Kör etiketleme: Çift etiketli bir meme'de, iki annotation da `gonderildi` olana kadar
        bir annotator diğerinin annotation'ını ve o meme'deki diğer kişinin yorumlarını göremez.
+       Kural, o meme'in annotator'ı olan admin için de geçerlidir. Kalibrasyon turunda aynı meme'i
+       etiketleyen kişiler arasında da uygulanır.
     2. Reviewer, gold kaydını onayladığı meme'in annotator'larından biri olamaz.
     3. Sızıntı kuralı: Test sorgusunu yazan kişi, doğru cevap olarak gösterdiği meme'lerin
        gold kaydına katkı veren (kaynak annotation sahibi veya reviewer) kişilerden biri olamaz.
     4. Aynı sha256'ya sahip ikinci görsel yüklenemez.
     5. `tanidiklik` 1 veya 2 ise annotation gönderilemez; atlanır ve yeniden atamaya düşer.
     6. Gönderimde doğrulama kuralları (`GET /schema/annotation`) sunucuda tekrar kontrol edilir.
+    7. İkinci bakış (ADR-0009): Tek etiketli meme'in gold kaydı da bir reviewer onayıyla oluşur;
+       gönderilen annotation otomatik onaylanmaz.
+    8. AI taslağı (ADR-0010): AI taslağı olan meme tek etiketlidir; kalibrasyona ve çift etiketli
+       alt kümeye alınamaz. Taslak doğrudan gold olmaz, annotator'ın formuna dolu gelir.
+
+    Kalibrasyon annotation'ları (`kalibrasyon: true`) ayrı bir turdur: gold kaydına, inceleme
+    kuyruğuna, meme'in `etiket_durumu`na ve uyum hesabına katılmaz.
 servers:
   - url: http://localhost:8000/api/v1
     description: Yerel geliştirme
@@ -251,7 +260,9 @@ paths:
     post:
       tags: [memes]
       summary: Tek görsel yükle (admin)
-      description: id, sha256, yukleyen ve yuklenme_zamani sunucuda otomatik doldurulur.
+      description: |
+        id, sha256, yukleyen ve yuklenme_zamani sunucuda otomatik doldurulur. id sıra numarasıyla
+        üretilir (m0001, m0002, ...). Dosya türü uzantıya değil dosyanın ilk baytlarına bakılarak belirlenir.
       requestBody:
         required: true
         content:
@@ -280,12 +291,19 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: Dosya görsel türünde görünüyor ama okunamıyor (`hata.kod = BOZUK_DOSYA`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
   /memes/bulk:
     post:
       tags: [memes]
       summary: Toplu yükleme (admin)
-      description: Mevcut ~300 meme'in aktarımı için. Kopyalar reddedilir, diğerleri yüklenir (kısmi başarı).
+      description: |
+        Mevcut ~300 meme'in aktarımı için. Kopyalar reddedilir, diğerleri yüklenir (kısmi başarı).
+        Barındırma ortamı istek gövdesini sınırlayabilir (Vercel'de 4.5 MB); büyük aktarımlar parça parça gönderilir.
       requestBody:
         required: true
         content:
@@ -306,6 +324,34 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/BulkUploadResult' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /memes/ai-drafts:
+    post:
+      tags: [memes]
+      summary: AI taslaklarını içe aktar (admin)
+      description: |
+        Bir LLM'in architecture.md §3 biçiminde hazırladığı kartları meme'lere taslak olarak bağlar
+        (ADR-0010). Kart, görselinin sha256'sıyla meme'e eşlenir; eşleşen meme yoksa `meme_yok`
+        döner ve görsel önce `POST /memes/bulk` ile yüklenir. Ham kart değiştirilmeden saklanır.
+        Taslak gold olmaz: atanan annotator etiketlemeye başlarken formu bu taslakla dolu bulur,
+        kontrol edip düzeltir ve gönderir; ardından reviewer ikinci bakışı yapar.
+        Kart gönderim kurallarına uymasa da kabul edilir; ihlaller `ihlaller` içinde listelenir.
+        Kartın `vlm_aciklama` alanı, meme'in `vlm_taslak` alanı boşsa onu da doldurur.
+        Her meme'in en fazla bir taslağı olur ve taslak sonradan değişmez. Gold kaydı, kalibrasyon ya da
+        çift etiketli annotation'ı olan ve etiketlenmeye başlanmış meme'e taslak eklenmez.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AiDraftImportRequest' }
+      responses:
+        '200':
+          description: Kart bazında sonuç (kısmi başarı)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AiDraftImportResult' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
 
   /memes/{meme_id}:
     parameters:
@@ -330,6 +376,9 @@ paths:
     get:
       tags: [memes]
       summary: Görsel dosyası
+      description: |
+        Yanıt `Cache-Control: private` ve sha256 değerini taşıyan `ETag` ile döner. `boyut=kucuk`
+        için şimdilik orijinal görsel döner.
       parameters:
         - name: boyut
           in: query
@@ -462,7 +511,9 @@ paths:
                 items: { $ref: '#/components/schemas/AnnotationSummary' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409':
-          description: Bu meme bu kişiye zaten atanmış (`hata.kod = ZATEN_ATANMIS`)
+          description: |
+            Bu meme bu kişiye zaten atanmış (`hata.kod = ZATEN_ATANMIS`) ya da AI taslağı olan meme
+            kalibrasyona veya çift etiketlemeye alınmak istendi (`hata.kod = AI_TASLAKLI_MEME`)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -523,7 +574,9 @@ paths:
       parameters:
         - name: durum_kodu
           in: query
-          description: Virgülle birden fazla verilebilir (ör. atandi,devam_ediyor,revizyon_gerekli)
+          description: |
+            Virgülle birden fazla verilebilir (ör. atandi,devam_ediyor,revizyon_gerekli).
+            Verilmezse üzerinde çalışılabilecek işler döner: atandi, devam_ediyor, revizyon_gerekli.
           schema: { type: string }
       responses:
         '200':
@@ -559,6 +612,9 @@ paths:
       description: |
         `atandi` → `devam_ediyor`, `baslama_zamani` set edilir. Etiket listesi ve şema versiyonu
         bu anda annotation'a sabitlenir. Zaten başlamışsa aynı annotation'ı döner (idempotent).
+        Tek etiketli bir ana tur annotation'ında meme'in AI taslağı varsa form o taslakla dolu başlar;
+        yoksa meme'in `vlm_taslak` alanı `vlm_aciklama`'yı doldurur. Doldurma `on_doldurma` alanında
+        görünür ve revizyon geçmişine ilk sürüm olarak yazılır.
       responses:
         '200':
           description: OK
@@ -619,8 +675,11 @@ paths:
       summary: Gönder
       description: |
         `devam_ediyor` veya `revizyon_gerekli` → `gonderildi`.
-        Tek etiketli meme'de gold kayıt bu annotation'dan otomatik oluşur ve annotation `onaylandi` olur.
-        Çift etiketli meme'de iki annotation da gönderilince meme inceleme kuyruğuna düşer.
+        Meme'in annotation'larının hepsi gönderilince meme inceleme kuyruğuna düşer: çift etiketli
+        meme anlaşmazlık çözümüne, tek etiketli meme ikinci bakışa (ADR-0009). Gold kaydı yalnızca
+        `POST /reviews/{meme_id}/gold` ile oluşur.
+        `tanidiklik` 1 veya 2 ise 422 `TANIDIKLIK_DUSUK` döner. Etiket listesi ve şema versiyonu
+        gönderim anında yeniden sabitlenir, çünkü içerik o anki listeye göre doğrulanır.
       requestBody:
         required: true
         content:
@@ -685,7 +744,10 @@ paths:
     post:
       tags: [reviews]
       summary: Revizyon iste (reviewer veya admin)
-      description: '`gonderildi` → `revizyon_gerekli`. Annotator kuyruğunda not ile birlikte görünür.'
+      description: |
+        `gonderildi` → `revizyon_gerekli`. Annotator kuyruğunda not ile birlikte görünür.
+        Tek etiketli meme'de ikinci bakışta kaydı geri göndermek için de kullanılır.
+        İsteyen kişi o meme'in annotator'ı olamaz.
       requestBody:
         required: true
         content:
@@ -712,7 +774,8 @@ paths:
       tags: [reviews]
       summary: İnceleme kuyruğu
       description: |
-        İki annotation'ı da gönderilmiş, gold kaydı olmayan çift etiketli meme'ler.
+        Annotation'larının hepsi gönderilmiş, gold kaydı olmayan meme'ler: çift etiketli meme'de
+        anlaşmazlık çözümü, tek etiketli meme'de ikinci bakış (ADR-0009).
         Yalnızca giriş yapan kullanıcının reviewer olabileceği (annotator'ı olmadığı) meme'ler döner.
       responses:
         '200':
@@ -729,14 +792,19 @@ paths:
     get:
       tags: [reviews]
       summary: Anlaşmazlık ekranı verisi
+      description: |
+        Çift etiketli meme'de iki annotation yan yana ve alan bazında karşılaştırma; tek etiketli
+        meme'de tek annotation ve boş karşılaştırma. Meme'in annotator'ı 403
+        `REVIEWER_ANNOTATOR_OLAMAZ` alır; annotation'lar henüz gönderilmediyse 409 döner.
       responses:
         '200':
-          description: İki annotation yan yana ve alan bazında karşılaştırma
+          description: Annotation'lar ve alan bazında karşılaştırma
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ReviewDetail' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   /reviews/{meme_id}/gold:
     parameters:
@@ -745,8 +813,9 @@ paths:
       tags: [reviews]
       summary: Gold kaydı onayla
       description: |
-        Reviewer bir annotation'ı seçer veya iki annotation'ı birleştirip düzenler.
-        İçerik tam doğrulamadan geçer. İlgili annotation'lar `onaylandi` olur.
+        Reviewer bir annotation'ı seçer veya iki annotation'ı birleştirip düzenler; tek etiketli
+        meme'de ikinci bakışla onaylar. İçerik tam doğrulamadan geçer. Meme'in gönderilmiş
+        annotation'ları `onaylandi` olur.
       requestBody:
         required: true
         content:
@@ -913,7 +982,7 @@ paths:
         required: true
         schema:
           type: string
-          enum: [gold.jsonl, annotations_raw.jsonl, test_set.jsonl]
+          enum: [gold.jsonl, annotations_raw.jsonl, test_set.jsonl, ai_drafts.jsonl]
     get:
       tags: [admin]
       summary: Dışa aktarım (admin)
@@ -922,6 +991,7 @@ paths:
         - gold.jsonl: satır başına `GoldExportRow`
         - annotations_raw.jsonl: satır başına `Annotation` (kullanıcılar takma adlı)
         - test_set.jsonl: satır başına `TestQuery` (yazan takma adlı)
+        - ai_drafts.jsonl: satır başına `AiDraftExportRow` (ham kart değiştirilmeden)
       responses:
         '200':
           description: NDJSON dosyası (Content-Disposition attachment)
@@ -945,7 +1015,7 @@ components:
       in: path
       required: true
       schema: { type: string }
-      example: kemal-sunal-hayirdir
+      example: m0001
     AnnotationId:
       name: annotation_id
       in: path
@@ -1005,9 +1075,10 @@ components:
             kod:
               type: string
               description: |
-                Makine tarafından okunabilir hata kodu. Örnekler: YETKISIZ, YASAK, BULUNAMADI,
-                KOPYA, ZATEN_ATANMIS, GECERSIZ_DURUM_GECISI, SURUM_CAKISMASI, DOGRULAMA,
-                TANIDIKLIK_DUSUK, SIZINTI, REVIEWER_ANNOTATOR_OLAMAZ
+                Makine tarafından okunabilir hata kodu. Örnekler: YETKISIZ, YASAK, KOR_ETIKETLEME,
+                BULUNAMADI, KOPYA, ZATEN_ATANMIS, GECERSIZ_DURUM_GECISI, SURUM_CAKISMASI, CAKISMA,
+                DOGRULAMA, TANIDIKLIK_DUSUK, SIZINTI, REVIEWER_ANNOTATOR_OLAMAZ, KAYIT_KAPALI,
+                DESTEKLENMEYEN_TUR, BOZUK_DOSYA, AI_TASLAKLI_MEME
               example: DOGRULAMA
             mesaj:
               type: string
@@ -1030,7 +1101,8 @@ components:
           example: durum
         kural:
           type: string
-          enum: [zorunlu, min_karakter, min_adet, max_adet, tekrar, gecersiz_etiket, pasif_etiket, aralik]
+          description: '`gecersiz_deger` yanlış tür veya biçimdeki değerler için kullanılır.'
+          enum: [zorunlu, min_karakter, max_karakter, min_adet, max_adet, tekrar, gecersiz_etiket, pasif_etiket, aralik, gecersiz_deger]
         mesaj:
           type: string
           example: En az 20 karakter olmalı.
@@ -1198,7 +1270,12 @@ components:
         tip:
           type: string
           enum: [metin, metin_listesi, etiket_listesi, enum]
-        min_karakter: { type: integer }
+        min_karakter:
+          type: integer
+          description: '`metin_listesi` alanlarında her elemana ayrı uygulanır'
+        max_karakter:
+          type: integer
+          description: '`metin_listesi` alanlarında her elemana ayrı uygulanır'
         min_adet: { type: integer }
         max_adet: { type: integer }
         tekrarsiz:
@@ -1228,17 +1305,19 @@ components:
           additionalProperties: { $ref: '#/components/schemas/FieldRule' }
           example:
             tur: { zorunlu: true, tip: enum, degerler: [template, hazir_meme] }
-            ad: { zorunlu: true, tip: metin }
-            kaynak: { zorunlu: false, tip: metin }
-            durum: { zorunlu: true, tip: metin, min_karakter: 20, aciklama: "Somut varlık değil, soyut iskelet" }
-            ornek_durumlar: { zorunlu: true, tip: metin_listesi, min_adet: 3, max_adet: 5, tekrarsiz: true }
-            uygun_olmayan_durumlar: { zorunlu: true, tip: metin_listesi, min_adet: 1, max_adet: 2 }
-            kulturel_bilgi: { zorunlu: true, tip: metin }
-            duygu: { zorunlu: true, tip: etiket_listesi, etiket_alani: duygu, min_adet: 1, max_adet: 3 }
-            niyet: { zorunlu: true, tip: etiket_listesi, etiket_alani: niyet, min_adet: 1, max_adet: 3 }
-            mekanizma: { zorunlu: true, tip: etiket_listesi, etiket_alani: mekanizma, min_adet: 1, max_adet: 3 }
-            uyari: { zorunlu: true, tip: etiket_listesi, etiket_alani: uyari, min_adet: 0, aciklama: "Boş liste = bilinçli 'uyarı yok' onayı" }
-            notlar: { zorunlu: false, tip: metin }
+            ad: { zorunlu: true, tip: metin, max_karakter: 60 }
+            kaynak: { zorunlu: false, tip: metin, max_karakter: 100 }
+            vlm_aciklama: { zorunlu: true, tip: metin, min_karakter: 20, max_karakter: 250, aciklama: "Yalnızca görselde görünenler" }
+            durum: { zorunlu: true, tip: metin, min_karakter: 20, max_karakter: 200, aciklama: "Somut varlık değil, soyut iskelet" }
+            ornek_durumlar: { zorunlu: true, tip: metin_listesi, min_adet: 3, max_adet: 5, tekrarsiz: true, max_karakter: 150 }
+            uygun_olmayan_durumlar: { zorunlu: true, tip: metin_listesi, min_adet: 1, max_adet: 2, tekrarsiz: true, max_karakter: 150 }
+            kulturel_bilgi: { zorunlu: true, tip: metin, max_karakter: 500 }
+            anahtar_kelimeler: { zorunlu: true, tip: metin_listesi, min_adet: 3, max_adet: 8, tekrarsiz: true, max_karakter: 40 }
+            duygu: { zorunlu: true, tip: etiket_listesi, etiket_alani: duygu, min_adet: 1, max_adet: 3, tekrarsiz: true }
+            niyet: { zorunlu: true, tip: etiket_listesi, etiket_alani: niyet, min_adet: 1, max_adet: 3, tekrarsiz: true }
+            mekanizma: { zorunlu: true, tip: etiket_listesi, etiket_alani: mekanizma, min_adet: 1, max_adet: 3, tekrarsiz: true }
+            uyari: { zorunlu: true, tip: etiket_listesi, etiket_alani: uyari, min_adet: 0, tekrarsiz: true, aciklama: "Boş liste = bilinçli 'uyarı yok' onayı" }
+            notlar: { zorunlu: false, tip: metin, max_karakter: 500 }
 
     # ------------------------------------------------------------ meme
     MemeLabelStatus:
@@ -1252,13 +1331,14 @@ components:
       properties:
         id:
           type: string
-          example: kemal-sunal-hayirdir
+          description: Sunucunun sıra numarasıyla ürettiği kimlik
+          example: m0001
         gorsel_url:
           type: string
-          example: /api/v1/memes/kemal-sunal-hayirdir/image
+          example: /api/v1/memes/m0001/image
         kucuk_gorsel_url:
           type: string
-          example: /api/v1/memes/kemal-sunal-hayirdir/image?boyut=kucuk
+          example: /api/v1/memes/m0001/image?boyut=kucuk
         sha256: { type: string }
         yukleyen: { $ref: '#/components/schemas/UserRef' }
         yuklenme_zamani: { type: string, format: date-time }
@@ -1274,6 +1354,15 @@ components:
           nullable: true
           description: Gold kayıt varsa oradaki `ad`
         acik_yorum_sayisi: { type: integer }
+        vlm_taslak:
+          type: string
+          nullable: true
+          description: |
+            Görselin yorumsuz tarifi (VLM ya da AI taslağından). Bir kez dolar, sonra değişmez;
+            annotation'daki `vlm_aciklama` bununla dolu gelir.
+        ai_taslagi_var:
+          type: boolean
+          description: Meme'e bağlı bir AI taslağı var (ADR-0010); meme tek etiketli kalır
 
     MemeDetail:
       allOf:
@@ -1333,6 +1422,10 @@ components:
           enum: [template, hazir_meme]
         ad: { type: string, nullable: true }
         kaynak: { type: string, nullable: true }
+        vlm_aciklama:
+          type: string
+          nullable: true
+          description: Görsel tarif; yalnızca görselde görünenler (kişi, yüz ifadesi, nesne, sahne, yazı)
         durum: { type: string, nullable: true }
         ornek_durumlar:
           type: array
@@ -1341,6 +1434,10 @@ components:
           type: array
           items: { type: string }
         kulturel_bilgi: { type: string, nullable: true }
+        anahtar_kelimeler:
+          type: array
+          description: Düz Türkçe anahtar kelimeler; hashtag ve bitişik yazım yok
+          items: { type: string }
         duygu:
           type: array
           items: { type: string }
@@ -1441,6 +1538,11 @@ components:
         surum:
           type: integer
           description: Her taslak kaydında artar; iyimser kilitleme için
+        on_doldurma:
+          type: string
+          nullable: true
+          enum: [ai_taslagi, vlm_taslagi]
+          description: Form etiketlemeye başlarken neyle dolu geldi; null = boş başladı
 
     AnnotationDraft:
       type: object
@@ -1592,6 +1694,9 @@ components:
         annotation_ids:
           type: array
           items: { type: string }
+        cift_etiket:
+          type: boolean
+          description: true = anlaşmazlık çözümü, false = tek etiketli meme'de ikinci bakış
         son_gonderme_zamani: { type: string, format: date-time }
 
     ReviewDetail:
@@ -1601,12 +1706,15 @@ components:
         meme: { $ref: '#/components/schemas/Meme' }
         annotasyonlar:
           type: array
-          minItems: 2
+          description: Çift etiketli meme'de iki, tek etiketli meme'de bir annotation
+          minItems: 1
           maxItems: 2
           items: { $ref: '#/components/schemas/Annotation' }
         karsilastirma:
           type: array
-          description: Alan bazında eşleşme özeti; ekranda farklı alanları vurgulamak için
+          description: |
+            Alan bazında eşleşme özeti; ekranda farklı alanları vurgulamak için.
+            Tek etiketli meme'de boş liste.
           items:
             type: object
             required: [alan, ayni]
@@ -1643,7 +1751,7 @@ components:
           allOf:
             - $ref: '#/components/schemas/UserRef'
           nullable: true
-          description: Tek etiketli meme'de null
+          description: Onaylayan kişi. ADR-0009'dan beri tek etiketli meme'de de dolu (ikinci bakışı yapan).
         cozum_notu: { type: string, nullable: true }
         onay_zamani: { type: string, format: date-time }
         sema_versiyonu: { type: string }
@@ -1658,7 +1766,7 @@ components:
             id: { type: string }
             gorsel:
               type: string
-              example: memes/kemal-sunal-hayirdir.jpg
+              example: memes/m0001.jpg
         - $ref: '#/components/schemas/AnnotationContent'
         - type: object
           properties:
@@ -1669,6 +1777,79 @@ components:
             reviewer: { type: string, nullable: true }
             sema_versiyonu: { type: string }
             etiket_listesi_versiyonu: { type: string }
+
+    AiDraftImportRequest:
+      type: object
+      required: [taslaklar]
+      properties:
+        taslaklar:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: object
+            required: [sha256, kart]
+            properties:
+              sha256:
+                type: string
+                description: Kartın görselinin sha256'sı; meme bununla bulunur
+              kaynak:
+                type: string
+                description: Taslağı üreten sistem; kartın `annotator` alanından
+                example: llm-auto
+              kart:
+                type: object
+                additionalProperties: true
+                description: architecture.md §3 biçiminde kart; değiştirilmeden saklanır
+
+    AiDraftImportResult:
+      type: object
+      required: [eklenen, reddedilen]
+      properties:
+        eklenen:
+          type: array
+          items:
+            type: object
+            required: [sha256, meme_id, vlm_taslak_dolduruldu, ihlaller]
+            properties:
+              sha256: { type: string }
+              meme_id: { type: string }
+              vlm_taslak_dolduruldu:
+                type: boolean
+                description: Kartın `vlm_aciklama`'sı meme'in boş `vlm_taslak` alanına yazıldı
+              ihlaller:
+                type: array
+                description: Taslağın gönderim kurallarına göre eksikleri; annotator gönderirken düzeltir
+                items: { $ref: '#/components/schemas/FieldError' }
+        reddedilen:
+          type: array
+          items:
+            type: object
+            required: [sha256, sebep, mesaj]
+            properties:
+              sha256: { type: string }
+              meme_id: { type: string, nullable: true }
+              sebep:
+                type: string
+                enum: [meme_yok, tekrar, zaten_var, gold_var, kalibrasyonda, cift_etiketli, etiketleme_baslamis]
+              mesaj: { type: string }
+
+    AiDraftExportRow:
+      description: ai_drafts.jsonl satırı
+      type: object
+      required: [id, gorsel, kaynak, kart, icerik, olusturma_zamani]
+      properties:
+        id:
+          type: string
+          description: Meme id
+        gorsel: { type: string }
+        kaynak: { type: string }
+        kart:
+          type: object
+          additionalProperties: true
+          description: İçe aktarılan ham kart
+        icerik: { $ref: '#/components/schemas/AnnotationContent' }
+        olusturma_zamani: { type: string, format: date-time }
 
     RecheckItem:
       type: object

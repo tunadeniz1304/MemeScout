@@ -29,10 +29,12 @@ export function createEmptyAnnotationContent() {
     tur: null,
     ad: '',
     kaynak: '',
+    vlm_aciklama: '',
     durum: '',
     ornek_durumlar: [],
     uygun_olmayan_durumlar: [],
     kulturel_bilgi: '',
+    anahtar_kelimeler: [],
     duygu: [],
     niyet: [],
     mekanizma: [],
@@ -62,8 +64,10 @@ export function validateAnnotationLocally(content, schema, labels = {}) {
     }
     if (missing || isWarningExplicitlyEmpty) continue
 
-    if (rule.tip === 'metin' && typeof value === 'string' && rule.min_karakter && value.trim().length < rule.min_karakter) {
-      errors.push({ alan: field, kural: 'min_karakter', mesaj: `En az ${rule.min_karakter} karakter olmalı.` })
+    if (rule.tip === 'metin' && typeof value === 'string') {
+      const length = value.trim().length
+      if (rule.min_karakter && length < rule.min_karakter) errors.push({ alan: field, kural: 'min_karakter', mesaj: `En az ${rule.min_karakter} karakter olmalı.` })
+      if (rule.max_karakter && length > rule.max_karakter) errors.push({ alan: field, kural: 'max_karakter', mesaj: `En fazla ${rule.max_karakter} karakter olabilir.` })
     }
     if (rule.tip === 'enum' && Array.isArray(rule.degerler) && !rule.degerler.includes(value)) {
       errors.push({ alan: field, kural: 'gecersiz_etiket', mesaj: 'Geçerli seçeneklerden birini seç.' })
@@ -76,9 +80,20 @@ export function validateAnnotationLocally(content, schema, labels = {}) {
       if (rule.min_adet !== undefined && value.length < rule.min_adet) errors.push({ alan: field, kural: 'min_adet', mesaj: `En az ${rule.min_adet} öğe seçilmeli.` })
       if (rule.max_adet !== undefined && value.length > rule.max_adet) errors.push({ alan: field, kural: 'max_adet', mesaj: `En fazla ${rule.max_adet} öğe seçilebilir.` })
       if (rule.tekrarsiz && new Set(value.map((item) => String(item).trim().toLocaleLowerCase('tr-TR'))).size !== value.length) errors.push({ alan: field, kural: 'tekrar', mesaj: 'Liste öğeleri birbirinden farklı olmalı.' })
+      if (rule.tip === 'metin_listesi') {
+        value.forEach((item, index) => {
+          const text = String(item).trim()
+          if (!text) errors.push({ alan: `${field}[${index}]`, kural: 'zorunlu', mesaj: 'Boş öğe olamaz.' })
+          else if (rule.max_karakter && text.length > rule.max_karakter) errors.push({ alan: `${field}[${index}]`, kural: 'max_karakter', mesaj: `Her öğe en fazla ${rule.max_karakter} karakter olabilir.` })
+        })
+      }
       if (rule.tip === 'etiket_listesi') {
-        const active = new Set((labels[rule.etiket_alani || field] || []).filter((item) => item.aktif).map((item) => item.etiket))
-        value.forEach((item) => { if (!active.has(item)) errors.push({ alan: field, kural: 'gecersiz_etiket', mesaj: 'Etkin etiket listesinden seçim yap.' }) })
+        const known = labels[rule.etiket_alani || field] || []
+        value.forEach((item, index) => {
+          const label = known.find((entry) => entry.etiket === item)
+          if (!label) errors.push({ alan: `${field}[${index}]`, kural: 'gecersiz_etiket', mesaj: 'Etiket listesinden seçim yap.' })
+          else if (!label.aktif) errors.push({ alan: `${field}[${index}]`, kural: 'pasif_etiket', mesaj: 'Bu etiket pasifleştirildi; kaldırıp başka bir etiket seç.' })
+        })
       }
     }
   }

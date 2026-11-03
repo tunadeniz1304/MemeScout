@@ -18,6 +18,7 @@ Bir karar değişirse eski kaydı silmeyin; durumunu "Yerini aldı: ADR-NNNN" ya
 | [0007](0007-ek-api-islemleri.md) | Dokümanda olmayan ek API işlemleri | Kabul edildi |
 | [0008](0008-etiket-sistem-adlari.md) | Etiketlerin sistem adları | Kabul edildi |
 | [0009](0009-tek-etiketli-memelerde-ikinci-bakis.md) | Tek etiketli meme'lerde hafif ikinci bakış | Kabul edildi |
+| [0010](0010-tek-etiketli-memelerde-llm-taslagi.md) | Tek etiketli meme'lerde LLM taslağı | Kabul edildi |
 
 ## Şablon
 

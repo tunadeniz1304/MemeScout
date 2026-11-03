@@ -133,10 +133,11 @@ export const api = {
 }
 
 /**
- * Client-side defense for test-query answer leakage. It inspects only the current user's
- * own annotation summaries and the gold reviewer. It never requests another annotator's
- * private annotation content. Any unverifiable candidate is rejected closed; the server
- * still performs the complete source-annotation/reviewer check on POST /test-queries.
+ * Client-side defense for test-query answer leakage. A user contributed to a gold record when one
+ * of their own annotations is among its source annotations or when they are its reviewer
+ * (ADR-0002). It inspects only the current user's own annotation summaries and the gold record.
+ * It never requests another annotator's private annotation content. Any unverifiable candidate
+ * is rejected closed; the server still performs the same check on POST /test-queries.
  */
 export async function checkTestQueryLeakage(authorId, memeIds) {
   const violations = []
@@ -149,7 +150,8 @@ export async function checkTestQueryLeakage(authorId, memeIds) {
       if (cause.status === 404) throw new Error(`${memeId}: gold kaydı bulunamadı. Yalnızca doğrulanmış gold memeleri seç.`)
       throw cause
     }
-    const ownAnnotation = (meme.annotasyonlar || []).some((item) => item.annotator?.id === authorId)
+    const ownIds = new Set((meme.annotasyonlar || []).filter((item) => item.annotator?.id === authorId).map((item) => item.id))
+    const ownAnnotation = (gold.kaynak_annotationlar || []).some((id) => ownIds.has(id))
     const ownAsReviewer = gold.reviewer?.id === authorId
     return { memeId, violation: ownAnnotation || ownAsReviewer }
   }))

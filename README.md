@@ -55,8 +55,9 @@ This project is developed as part of the **SENG 429** course.
 
 - [x] API contract shared by frontend and backend ([openapi.yaml](annotation-platform/openapi.yaml))
 - [x] Login and user management
-- [ ] Blind double labeling, review and gold records
-- [ ] Leakage check for test queries
+- [x] Blind double labeling, review and gold records
+- [x] Leakage check for test queries
+- [x] Agreement and progress dashboards (API), audit log and JSONL export
 
 **Evaluation** (planned)
 
@@ -70,7 +71,7 @@ This project is developed as part of the **SENG 429** course.
 | Backend        | Python, FastAPI, SQLModel                         |
 | Database       | PostgreSQL (SQLite in tests)                      |
 | Search         | bge-m3 embeddings, Qdrant, LLM reranker (planned) |
-| Infrastructure | Render                                            |
+| Infrastructure | Vercel (frontend and API), Supabase (PostgreSQL)  |
 | Testing        | pytest                                            |
 
 ## Getting Started
@@ -99,6 +100,8 @@ DATABASE_URL=sqlite:///./memescout.db
 ```
 
 Sign-up is closed by default. To allow it locally, also add `REGISTRATION_OPEN=1` to that file and `VITE_REGISTRATION_OPEN=1` to `annotation-platform/frontend/.env`.
+
+The other backend settings and the meme import script are described in [annotation-platform/README.md](annotation-platform/README.md).
 
 > [!WARNING]
 > Never commit `.env` or any secret. It is ignored by `.gitignore`.

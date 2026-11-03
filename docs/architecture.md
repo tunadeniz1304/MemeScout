@@ -18,7 +18,7 @@ Semantik benzerlik ile mizahi uygunluk aynı şey değildir. Embedding modelleri
 | Konu | Karar |
 | --- | --- |
 | Veri | Kendi topladığımız ~300 meme |
-| Etiketleme | Anlam alanları tamamen elle, anlamı insan yazar. Görsel tarifin taslağını VLM üretir, insan düzeltir. |
+| Etiketleme | Anlamı insan belirler. Tek etiketli meme'lerde form bir LLM taslağıyla dolu gelebilir; annotator her alanı kontrol edip düzeltir, reviewer ikinci bakışla onaylar ([ADR-0010](adr/0010-tek-etiketli-memelerde-llm-taslagi.md)). Çift etiketli alt küme ve kalibrasyon turu taslaksız, elle etiketlenir. Görsel tarifin taslağını VLM üretir, insan düzeltir. |
 | Annotation platformu | İleride geliştirilecek. Şema bu dokümandaki gibi. |
 | VLM açıklaması | Zorunlu. Yükleme sırasında VLM görselde ne olduğunu yorumsuz tarif eder, annotator kontrol edip düzeltir. Tarif modunda kullanılır. |
 | Anahtar kelimeler | Her meme'e 3–8 düz Türkçe anahtar kelime. BM25'te kullanılır. Hashtag ve bitişik yazım yok. |
@@ -192,7 +192,7 @@ Ton için şemada ayrı bir alan yok. Context Agent'ın çıkardığı ton ve ku
 
 **Ablation:** C sistemine bileşenler tek tek eklenip çıkarılarak ölçülür: HyDE, uygun olmayan durum cezası, duygu/niyet artırması, LLM reranker, VLM açıklaması, OCR, örnek durum genişletme. B2, C'den bütün LLM adımları çıkarıldığında kalan sistemdir ve bu ablation'ın alt sınırı olarak okunur.
 
-**Ek deney:** Aynı meme'ler LLM'e otomatik etiketletilip insan etiketleriyle karşılaştırılır ("LLM Türk meme bağlamını ne kadar biliyor?").
+**Ek deney:** Aynı meme'ler LLM'e otomatik etiketletilip insan etiketleriyle karşılaştırılır ("LLM Türk meme bağlamını ne kadar biliyor?"). LLM taslağının annotator'a dolu geldiği tek etiketli meme'lerde ölçülen şey annotator'ın ne kadar düzelttiğidir; bağımsız karşılaştırma taslaksız çift etiketli alt kümede yapılır.
 
 ## 7. İleride
 
@@ -216,7 +216,7 @@ Ekim 2026'da ekip içinde önerilen, değerlendirildikten sonra alınmayan seçe
 | --- | --- |
 | Arama anında hiç LLM çalıştırmamak | Context Agent, HyDE, reranker, açıklama ve refine döngüsü olmadan BRIEF'teki farklılaştırıcılar ve başarı ölçütü boşa düşer. Fikir B2 baseline olarak ölçülüyor. |
 | Bütün etiketlemeyi tek kişinin yapması, diğerlerinin 1–5 puan vermesi | Etiketleyiciler arası uyum ölçülemez. Tanıdıklığı düşük meme'leri devredecek kimse kalmaz. Toplam iş de azalmaz (300 etiket + 900 puanlama). Üslup tutarlılığı kılavuz ve kalibrasyon turuyla sağlanır. |
-| Anlam alanlarını LLM'e ön-doldurtmak | Etiketleyici taslağa kayar, çift etiketlemede uyum yapay olarak yükselir, LLM ile insan etiketlerini karşılaştıran deney kirlenir. LLM yalnızca görsel tarifin taslağını üretir. |
+| Anlam alanlarını LLM'e ön-doldurtmak (çift etiketli alt kümede ve kalibrasyonda) | Etiketleyici taslağa kayar ve çift etiketlemede uyum yapay olarak yükselir. Tek etiketli meme'lerde 2026-11-03'te alındı ([ADR-0010](adr/0010-tek-etiketli-memelerde-llm-taslagi.md)): taslak gold olmaz, annotator düzeltir, ham LLM çıktısı ayrıca saklanır. |
 | Kara liste ya da sınıflandırıcıyla içerik engelleme (veri, etiket, sorgu) | BRIEF'e göre uyarı etiketi var, otomatik engelleme kapsam dışı. Argo anlamak temel hedef ve yapıştırılan konuşmalar çoğu zaman küfür içerir. Engelleme, uyarı etiketini ve doğruluk metriğini anlamsızlaştırır. |
 | Sorgu türünü kelime listesiyle tahmin edip sabit ağırlık vermek | Durum sorgularında da somut nesneler geçer ("kedim bardağı düşürdü"). Ağırlıklar keyfi kalır. Mod ayrımını Router Agent, birleştirmeyi RRF yapar. |
 | Benzer meme'leri farklı konulara bağlamak | Meme konuya değil tepkiye bağlıdır (bkz. 1). |
