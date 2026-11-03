@@ -6,7 +6,7 @@
 
 ## 1. Amaç ve Kapsam
 
-- ~300 meme, 4 kişilik ekip tarafından elle etiketlenecek. Anlam alanlarını insan yazar; görsel tarifin taslağını VLM üretir, annotator düzeltir.
+- ~300 meme, 4 kişilik ekip tarafından etiketlenecek. Anlamı insan belirler: tek etiketli meme'lerde form bir LLM taslağıyla dolu gelebilir, annotator her alanı kontrol edip düzeltir ve reviewer ikinci bakışla onaylar (§3.9, [ADR-0010](adr/0010-tek-etiketli-memelerde-llm-taslagi.md)). Taslak doğrudan gold olmaz. Çift etiketli alt küme ve kalibrasyon turu taslaksız, elle etiketlenir. Görsel tarifin taslağını VLM üretir, annotator düzeltir.
 - Platformun çıktısı iki şeydir:
   1. Her meme için tek, kesinleşmiş bir kayıt (**gold**). Arama sistemi bunu kullanır.
   2. Her etiketleyicinin ham etiketleri. Etiketleyiciler arası uyum analizi bunlarla yapılır.
@@ -30,7 +30,8 @@ Meme 1───* Annotation *───1 Kullanıcı
  │            └── versiyonlar (revizyon geçmişi)
  ├──1 GoldKayıt
  ├──* Yorum / İşaret
- └──* TestSorgusu (doğru cevap olarak)
+ ├──* TestSorgusu (doğru cevap olarak)
+ └──0..1 AITaslağı (tek etiketli meme'lerde)
 
 EtiketListesi (versiyonlu)
 DenetimKaydı (kim, ne zaman, neyi değiştirdi)
@@ -47,7 +48,7 @@ Bu alanların hepsini platform yükleme sırasında otomatik doldurur. Kullanıc
 | `sha256` | string | Dosyadan hesaplanır. Aynı dosyanın iki kez yüklenmesini engeller |
 | `yukleyen` | kullanıcı | Giriş yapmış kullanıcı |
 | `yuklenme_zamani` | zaman damgası | Yükleme anı |
-| `vlm_taslak` | metin | Yükleme sırasında VLM'e ürettirilir: görselde ne olduğunun yorumsuz tarifi. Sonradan değiştirilmez. Annotation'daki `vlm_aciklama` alanını önceden doldurmak ve VLM'in ne kadar düzeltildiğini görmek için saklanır |
+| `vlm_taslak` | metin | Yükleme sırasında VLM'e ürettirilir ya da AI taslağının `vlm_aciklama` alanından gelir (§3.9): görselde ne olduğunun yorumsuz tarifi. Sonradan değiştirilmez. Annotation'daki `vlm_aciklama` alanını önceden doldurmak ve VLM'in ne kadar düzeltildiğini görmek için saklanır |
 
 Elimizdeki mevcut ~300 meme platforma toplu olarak aktarılır. Bu aktarımda da alanlar aynı şekilde otomatik dolar. `yukleyen` alanına aktarımı başlatan kişi yazılır.
 
@@ -159,13 +160,30 @@ Değerlendirme seti (~100 sorgu) de platformda tutulur.
 
 Her değişiklik için: kim, ne zaman, hangi kayıt, hangi alan, eski değer, yeni değer. Revizyon geçmişi ve "kim neyi değiştirdi" soruları bununla cevaplanır.
 
+### 3.9 AI taslağı
+
+Bir LLM'in architecture.md §3 biçiminde hazırladığı kart, meme'e taslak olarak bağlanabilir ([ADR-0010](adr/0010-tek-etiketli-memelerde-llm-taslagi.md)). Kart görselin `sha256` değeriyle meme'e eşlenir; eşleşen meme yoksa görsel yeni meme olarak yüklenir.
+
+| Alan | Açıklama |
+| --- | --- |
+| `meme` | Taslağın ait olduğu meme. Meme başına en fazla bir taslak |
+| `kaynak` | Taslağı üreten sistem, ör. `llm-auto` (kartın `annotator` alanı) |
+| `kart` | İçe aktarılan kart. Değiştirilmeden saklanır; annotator'ın ne kadar düzelttiği bununla ölçülür |
+| `icerik` | Kartın §3.2 alanları. Annotation'ı önceden doldurmak için kullanılır |
+
+Kurallar:
+- Taslak doğrudan gold olmaz. AI taslağı olan meme tek etiketlidir; atanan annotator etiketlemeye başlarken formu taslakla dolu bulur, her alanı kontrol edip düzeltir ve gönderir. Ardından reviewer ikinci bakışı yapar.
+- AI taslağı olan meme çift etiketli alt kümeye ve kalibrasyon turuna alınmaz. Gold kaydı, kalibrasyon ya da çift etiketli annotation'ı olan ya da etiketlenmeye başlanmış meme'e taslak eklenmez.
+- Kart §3.2 kurallarına uymasa da taslak olarak alınır; eksikler içe aktarma raporunda listelenir ve gönderimde annotator'a gösterilir.
+- Kartın `vlm_aciklama` alanı, meme'in `vlm_taslak` alanı boşsa onu doldurur.
+
 ## 4. Etiketleme Süreci
 
 ### 4.1 Aşamalar
 
 1. **Kılavuz:** Etiket tanımları ve örneklerle etiketleme kılavuzu yazılır.
 2. **Kalibrasyon turu:** 4 kişinin hepsi aynı 10–15 meme'i etiketler. Sonuçlar birlikte tartışılır ve kılavuz güncellenir. Bu turun etiketleri `kalibrasyon` ile işaretlenir ve uyum ölçümüne katılmaz.
-3. **Ana etiketleme:** 300 meme 4 kişiye bölünür, kişi başı ~75 meme.
+3. **Ana etiketleme:** 300 meme 4 kişiye bölünür, kişi başı ~75 meme. AI taslağı olan tek etiketli meme'lerde form taslakla dolu gelir (§3.9).
 4. **Çift etiketleme:** Meme'lerin ~%20'si (~60 meme) ikinci bir kişiye de atanır. 4 kişiden 6 farklı ikili çıkar, her ikiliye ~10 meme düşer. Böylece uyum, kişiden bağımsız ölçülür. İlk yarısı (~30 meme) bittiğinde ara uyum ölçümü yapılır (§6).
 5. **Uyum ölçümü ve çözüm:** Anlaşmazlıkları üçüncü bir kişi (reviewer) çözer.
 6. **İkinci bakış:** Tek etiketlenen meme'leri, onları etiketlemeyen bir reviewer hızlıca kontrol eder; onaylar ya da `revizyon_notu` ile geri gönderir ([ADR-0009](adr/0009-tek-etiketli-memelerde-ikinci-bakis.md)). Bu kontrol uyum ölçümüne katılmaz.
