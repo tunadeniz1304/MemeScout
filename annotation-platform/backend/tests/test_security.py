@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime, timedelta, timezone
-from jose import jwt as jose_jwt
+import jwt
 from fastapi.security import HTTPAuthorizationCredentials
 
 from app.security import (
@@ -35,7 +35,7 @@ def test_password_hashing_and_verification():
 def test_token_creation_and_structure():
     user_id = "user123"
     token = token_olustur(user_id)
-    decoded = jose_jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    decoded = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     assert decoded["sub"] == user_id
     assert "exp" in decoded
 
