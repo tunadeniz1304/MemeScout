@@ -20,6 +20,7 @@ Each development phase `P<n>` is released as `v0.<n>.0`.
 ### Changed
 
 - Labeling screen: the queue shows meme thumbnails in pages of 10 instead of one long list.
+- Annotation form: field labels such as "Meme adı" and "Kaynak" are larger.
 - API contract: `vlm_aciklama`, `anahtar_kelimeler` and maximum lengths from the annotation guide; single-labeled memes get a reviewer check before gold (ADR-0009); `POST /memes/ai-drafts`, `vlm_taslak` and `on_doldurma` for AI drafts (ADR-0010); exclusion vote and pool operations, the `cikarildi` meme status, `MEME_CIKARILDI` and `HAVUZDA_DEGIL` errors and `cikarilan` in progress stats (ADR-0011).
 
 ### Fixed
