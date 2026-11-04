@@ -1,4 +1,5 @@
 from itertools import combinations
+from typing import Optional
 
 from fastapi import APIRouter, Depends
 from sqlmodel import Session, select
@@ -8,7 +9,7 @@ from app.database import get_session
 from app.denetim import ANNOTATION, GUNCELLEME, OLUSTURMA, denetle
 from app.errors import ApiHatasi
 from app.havuz import cikarilmamis_olmali, cikarilmis_memeler
-from app.kurallar import aktif_mi, cift_etiket_mi, grubu
+from app.kurallar import aktif_mi, cift_etiket_mi, grubu, test_sorgusu_yazarlari
 from app.models import ATLANDI, AiDraft, Annotation, GoldRecord, Meme, User
 from app.schemas import (
     AnnotationSummaryOut,
@@ -88,6 +89,16 @@ def elle_ata(
             409, "MEME_CIKARILDI", "Havuz kararıyla çıkarılan meme'e annotator atanamaz.",
             detay={"meme_ids": [meme_id for meme_id in veri.meme_ids if meme_id in cikarilanlar]},
         )
+    test_setindekiler = [meme_id for meme_id in veri.meme_ids if session.get(Meme, meme_id).test_seti]
+    if test_setindekiler:
+        raise ApiHatasi(409, "TEST_SETI", "Test setindeki meme'e annotator atanamaz.", detay={"meme_ids": test_setindekiler})
+    yazarlar = test_sorgusu_yazarlari(session, veri.meme_ids)
+    ihlal = [meme_id for meme_id in veri.meme_ids if annotator.id in yazarlar[meme_id]]
+    if ihlal:
+        raise ApiHatasi(
+            409, "SIZINTI", "Bir meme'e test sorgusu yazan kişi o meme'i etiketleyemez.",
+            detay={"ihlal_eden_memeler": ihlal},
+        )
 
     mevcutlar = annotationlari_meme_bazinda(session, veri.meme_ids)
     goldlu = set(session.exec(select(GoldRecord.meme_id).where(GoldRecord.meme_id.in_(veri.meme_ids))).all())
@@ -148,11 +159,15 @@ def elle_ata(
     return [cikti.annotation_ozeti(annotation, kisiler) for annotation in yeniler]
 
 
-def dagitim_plani(memeler: list[Meme], cift_disi: set[str], annotatorlar: list[User], oran: float):
+def dagitim_plani(memeler: list[Meme], cift_disi: set[str], annotatorlar: list[User], oran: float,
+                  yasakli: Optional[dict[str, set[str]]] = None):
     """Atanmamış meme'leri böler; `oran` kadarını tüm ikililere dengeli dağıtarak çift etiketler.
 
+    `yasakli`, meme'e test sorgusu yazdığı için o meme'e atanamayacak kişilerdir (ADR-0012).
+    Uygun ikilisi olmayan meme tek etiketliye, uygun kimsesi olmayan meme atanmadan kalır.
     Plan veriye göre belirlenir: aynı veritabanında dry_run ile görülen plan uygulananla aynıdır.
     """
+    yasakli = yasakli or {}
     ikililer = list(combinations([kisi.id for kisi in annotatorlar], 2))
     # Kalibrasyonda herkes birbirinin etiketini gördü, AI taslaklı meme'de form taslakla dolu gelir;
     # ikisi de bağımsız çift etiketlemeye uygun değil.
@@ -163,19 +178,27 @@ def dagitim_plani(memeler: list[Meme], cift_disi: set[str], annotatorlar: list[U
     atamalar: dict[str, list[str]] = {}
     yuk = {kisi.id: 0 for kisi in annotatorlar}
     ikili_yuku = {ikili: 0 for ikili in ikililer}
+    cift_idleri = set()
     for sira, meme in enumerate(ciftler):
-        ikili = ikililer[sira % len(ikililer)]
+        # Sıradaki ikiliden başlanır; meme'e test sorgusu yazan birini içeren ikili atlanır.
+        sirali = ikililer[sira % len(ikililer):] + ikililer[:sira % len(ikililer)]
+        ikili = next((aday for aday in sirali if not yasakli.get(meme.id, set()) & set(aday)), None)
+        if ikili is None:
+            continue
         atamalar[meme.id] = list(ikili)
+        cift_idleri.add(meme.id)
         ikili_yuku[ikili] += 1
         for kisi_id in ikili:
             yuk[kisi_id] += 1
 
-    cift_idleri = {meme.id for meme in ciftler}
     for meme in sorted(memeler, key=lambda meme: meme.id):
         if meme.id in cift_idleri:
             continue
+        uygunlar = [kisi_id for kisi_id in yuk if kisi_id not in yasakli.get(meme.id, set())]
+        if not uygunlar:
+            continue
         # Toplam yükü en az olan kişi alır; eşitlikte istekteki sıra belirler.
-        kisi_id = min(yuk, key=lambda aday: yuk[aday])
+        kisi_id = min(uygunlar, key=lambda aday: yuk[aday])
         atamalar[meme.id] = [kisi_id]
         yuk[kisi_id] += 1
     return dict(sorted(atamalar.items())), yuk, ikili_yuku
@@ -195,9 +218,12 @@ def otomatik_ata(
     cikarilanlar = cikarilmis_memeler(session)
     atanmamislar = [
         meme for meme in session.exec(select(Meme).order_by(Meme.id)).all()
-        if meme.id not in ana_turdakiler and meme.id not in goldlu and meme.id not in cikarilanlar
+        if meme.id not in ana_turdakiler and meme.id not in goldlu and meme.id not in cikarilanlar and not meme.test_seti
     ]
-    atamalar, yuk, ikili_yuku = dagitim_plani(atanmamislar, kalibrasyondakiler | ai_memeler, annotatorlar, veri.cift_etiket_orani)
+    yasakli = test_sorgusu_yazarlari(session, [meme.id for meme in atanmamislar])
+    atamalar, yuk, ikili_yuku = dagitim_plani(
+        atanmamislar, kalibrasyondakiler | ai_memeler, annotatorlar, veri.cift_etiket_orani, yasakli,
+    )
 
     if not veri.dry_run:
         for meme_id, kisi_idleri in atamalar.items():
@@ -240,6 +266,11 @@ def yeniden_ata(
     tur = [a for a in meme_annotationlari if a.kalibrasyon == eski.kalibrasyon]
     if any(a.annotator_id == yeni_kisi.id for a in tur):
         raise ApiHatasi(409, "ZATEN_ATANMIS", "Bu meme bu kişiye zaten atanmış.")
+    if yeni_kisi.id in test_sorgusu_yazarlari(session, [eski.meme_id])[eski.meme_id]:
+        raise ApiHatasi(
+            409, "SIZINTI", "Bir meme'e test sorgusu yazan kişi o meme'i etiketleyemez.",
+            detay={"ihlal_eden_memeler": [eski.meme_id]},
+        )
     if not eski.kalibrasyon:
         if session.get(GoldRecord, eski.meme_id) is not None:
             raise ApiHatasi(409, "GECERSIZ_DURUM_GECISI", "Bu meme'in gold kaydı var.")

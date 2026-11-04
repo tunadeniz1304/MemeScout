@@ -24,6 +24,7 @@ from app.schemas import (
     MemeEtiketDurumu,
     MemeOut,
     MemePageOut,
+    MemeUpdateIn,
 )
 from app.security import admin_kullanici, aktif_kullanici
 from app.sema import icerik_dogrula
@@ -94,6 +95,7 @@ def memeleri_listele(
     etiket_durumu: Optional[MemeEtiketDurumu] = None,
     annotator_id: Optional[str] = None,
     cift_etiket: Optional[bool] = None,
+    test_seti: Optional[bool] = None,
     q: Optional[str] = None,
     sayfa: int = Query(1, ge=1),
     boyut: int = Query(50, ge=1, le=200),
@@ -109,6 +111,8 @@ def memeleri_listele(
         if annotator_id and annotator_id not in baglam.annotatorlar(meme.id):
             continue
         if cift_etiket is not None and baglam.cift_etiket(meme.id) != cift_etiket:
+            continue
+        if test_seti is not None and meme.test_seti != test_seti:
             continue
         if aranan and aranan not in meme.id.lower() and aranan not in tr_kucuk(baglam.ad(meme.id) or ""):
             continue
@@ -231,6 +235,28 @@ def meme_detayi(
         **cikti.memeler(session, [meme], kullanici)[0],
         "annotasyonlar": [cikti.annotation_ozeti(annotation, kisiler) for annotation in session.exec(sorgu).all()],
     }
+
+
+@router.patch("/{meme_id}", response_model=MemeOut)
+def meme_guncelle(
+    meme_id: str,
+    veri: MemeUpdateIn,
+    session: Session = Depends(get_session),
+    yonetici: User = Depends(admin_kullanici),
+):
+    meme = meme_getir(session, meme_id)
+    if veri.test_seti is not None and veri.test_seti != meme.test_seti:
+        # Test seti etiketlemeden ayrıdır (ADR-0012): etiketlenmeye başlanmış meme test setine alınamaz.
+        if veri.test_seti and (
+            session.exec(select(Annotation).where(Annotation.meme_id == meme_id)).first() is not None
+            or session.get(GoldRecord, meme_id) is not None
+        ):
+            raise ApiHatasi(409, "GECERSIZ_DURUM_GECISI", "Etiketlenmeye başlanmış meme test setine alınamaz.")
+        denetle(session, yonetici.id, MEME, meme.id, GUNCELLEME, alan="test_seti", eski=meme.test_seti, yeni=veri.test_seti)
+        meme.test_seti = veri.test_seti
+        session.commit()
+        session.refresh(meme)
+    return cikti.memeler(session, [meme], yonetici)[0]
 
 
 @router.get("/{meme_id}/image")

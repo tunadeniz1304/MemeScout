@@ -77,10 +77,21 @@ def sorgu_ekle(
     session: Session = Depends(get_session),
     kullanici: User = Depends(aktif_kullanici),
 ):
-    dogru_memeleri_dogrula(session, kullanici.id, veri.dogru_memeler)
-    sorgu = TestQuery(metin=veri.metin, mod=veri.mod, dogru_memeler=veri.dogru_memeler, yazan_id=kullanici.id)
+    yazan_id = kullanici.id
+    if veri.yazan_id and veri.yazan_id != kullanici.id:
+        # Ekip dışında yazılmış sorgular (ör. bir belgedeki) yazarları adına admin tarafından eklenir.
+        if not kullanici.admin:
+            raise ApiHatasi(403, "YASAK", "Başkası adına test sorgusunu yalnızca admin ekleyebilir.")
+        if session.get(User, veri.yazan_id) is None:
+            raise ApiHatasi(422, "DOGRULAMA", "Yazar bulunamadı.", alanlar=[
+                {"alan": "yazan_id", "kural": "gecersiz_deger", "mesaj": f"'{veri.yazan_id}' adında bir kullanıcı yok."},
+            ])
+        yazan_id = veri.yazan_id
+    dogru_memeleri_dogrula(session, yazan_id, veri.dogru_memeler)
+    sorgu = TestQuery(metin=veri.metin, mod=veri.mod, dogru_memeler=veri.dogru_memeler, yazan_id=yazan_id)
     session.add(sorgu)
-    denetle(session, kullanici.id, TEST_SORGUSU, sorgu.id, OLUSTURMA, yeni=sorgu_degeri(sorgu))
+    yeni = sorgu_degeri(sorgu) | ({"yazan_id": yazan_id} if yazan_id != kullanici.id else {})
+    denetle(session, kullanici.id, TEST_SORGUSU, sorgu.id, OLUSTURMA, yeni=yeni)
     session.commit()
     session.refresh(sorgu)
     return cikti.test_sorgusu(sorgu, cikti.kullanicilar(session), set())

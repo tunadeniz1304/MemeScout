@@ -81,8 +81,10 @@ export const api = {
   updateLabel: (alan, etiket, changes) => request(`/label-lists/labels/${idPath(alan)}/${idPath(etiket)}`, json('PATCH', changes)),
 
   // Meme inventory, protected images and gold records
-  memes: (filters = {}) => request(`/memes${queryString({ etiket_durumu: filters.etiket_durumu, annotator_id: filters.annotator_id, cift_etiket: filters.cift_etiket, q: filters.q, sayfa: filters.sayfa, boyut: filters.boyut })}`),
+  memes: (filters = {}) => request(`/memes${queryString({ etiket_durumu: filters.etiket_durumu, annotator_id: filters.annotator_id, cift_etiket: filters.cift_etiket, test_seti: filters.test_seti, q: filters.q, sayfa: filters.sayfa, boyut: filters.boyut })}`),
   meme: (memeId) => request(`/memes/${idPath(memeId)}`),
+  // Admin: test setine al ya da çıkar (ADR-0012).
+  updateMeme: (memeId, changes) => request(`/memes/${idPath(memeId)}`, json('PATCH', changes)),
   image: (memeId, boyut = 'orijinal') => request(`/memes/${idPath(memeId)}/image${queryString({ boyut })}`),
   gold: (memeId) => request(`/memes/${idPath(memeId)}/gold`),
   uploadMeme: (file) => { const form = new FormData(); form.append('dosya', file); return request('/memes', { method: 'POST', body: form }) },

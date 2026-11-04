@@ -49,6 +49,7 @@ def meme(meme: Meme, baglam, kisiler: dict[str, User], kullanici: User) -> dict:
         "acik_yorum_sayisi": baglam.acik_yorum_sayisi(meme.id, kullanici.id),
         "vlm_taslak": meme.vlm_taslak,
         "ai_taslagi_var": meme.id in baglam.ai_taslaklari,
+        "test_seti": meme.test_seti,
     }
 
 

@@ -51,6 +51,7 @@ Bu alanların hepsini platform yükleme sırasında otomatik doldurur. Kullanıc
 | `yukleyen` | kullanıcı | Giriş yapmış kullanıcı |
 | `yuklenme_zamani` | zaman damgası | Yükleme anı |
 | `vlm_taslak` | metin | Yükleme sırasında VLM'e ürettirilir ya da AI taslağının `vlm_aciklama` alanından gelir (§3.9): görselde ne olduğunun yorumsuz tarifi. Sonradan değiştirilmez. Annotation'daki `vlm_aciklama` alanını önceden doldurmak ve VLM'in ne kadar düzeltildiğini görmek için saklanır |
+| `test_seti` | boolean | Meme test setinde: etiketleme atamalarına girmez, herkes ona test sorgusu yazar (§3.7, [ADR-0012](adr/0012-test-seti-ayri-kume.md)) |
 
 Elimizdeki mevcut ~300 meme platforma toplu olarak aktarılır. Bu aktarımda da alanlar aynı şekilde otomatik dolar. `yukleyen` alanına aktarımı başlatan kişi yazılır.
 
@@ -158,6 +159,8 @@ Değerlendirme seti (~100 sorgu) de platformda tutulur.
 
 **Sızıntı kuralı ([ADR-0002](adr/0002-sizinti-kurali-reviewer-dahil.md)):** Test sorgusunu yazan kişi, doğru cevap olarak gösterdiği meme'lerin gold kaydına katkı veren hiç kimse olamaz: kaynak annotation'ların sahipleri ve reviewer. Platform ihlalde `422 SIZINTI` döner ve sorunlu meme'leri listeler. Aynı `parafraz_grubu`'ndaki varyantlar için de kural aynıdır. Mümkünse sorguları ekip dışından biri yazar; bu, kuraldan daha güçlü bir korumadır.
 
+**Test seti ([ADR-0012](adr/0012-test-seti-ayri-kume.md)):** Admin seçtiği meme'leri test setine alır. Bu meme'ler etiketleme atamalarına girmez ve herkes onlara test sorgusu yazar. "Test sorguları" sayfası her fotoğrafı gösterir; altına, aratınca o memin çıkması gereken cümleler yazılır. Kural ters yönde de geçerlidir: bir meme'e test sorgusu yazan kişi o meme'e annotator olarak atanamaz ve reviewer'ı olamaz. Ekip dışında toplanan sorgular admin tarafından yazarları adına eklenir.
+
 ### 3.8 Denetim kaydı
 
 Her değişiklik için: kim, ne zaman, hangi kayıt, hangi alan, eski değer, yeni değer. Revizyon geçmişi ve "kim neyi değiştirdi" soruları bununla cevaplanır.
@@ -217,7 +220,7 @@ Kurallar:
 4. **Çift etiketleme:** Meme'lerin ~%20'si (~60 meme) ikinci bir kişiye de atanır. 4 kişiden 6 farklı ikili çıkar, her ikiliye ~10 meme düşer. Böylece uyum, kişiden bağımsız ölçülür. İlk yarısı (~30 meme) bittiğinde ara uyum ölçümü yapılır (§6).
 5. **Uyum ölçümü ve çözüm:** Anlaşmazlıkları üçüncü bir kişi (reviewer) çözer.
 6. **İkinci bakış:** Tek etiketlenen meme'leri, onları etiketlemeyen bir reviewer hızlıca kontrol eder; onaylar ya da `revizyon_notu` ile geri gönderir ([ADR-0009](adr/0009-tek-etiketli-memelerde-ikinci-bakis.md)). Bu kontrol uyum ölçümüne katılmaz.
-7. **Test seti:** Sızıntı kuralına uyularak ~100 test sorgusu yazılır. Bunlardan 20'si için 2'şer parafraz varyantı eklenir (§3.7, `parafraz_grubu`).
+7. **Test seti:** ~100 meme test setine ayrılır ve etiketleme atamalarına girmez ([ADR-0012](adr/0012-test-seti-ayri-kume.md)). Herkes bu fotoğrafların her birine, aratınca o memin çıkması gereken 2-3 cümle yazar; en az biri tarif olur. Sızıntı kuralı geçerlidir. Bunlardan 20'si için 2'şer parafraz varyantı eklenir (§3.7, `parafraz_grubu`).
 8. **Dışa aktarım:** Gold kayıtlar arama sistemine aktarılır.
 
 ### 4.2 Annotation durumları
