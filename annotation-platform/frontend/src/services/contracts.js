@@ -24,13 +24,14 @@ export const MEME_STATUS_NAMES = Object.freeze({ atanmadi: 'Atanmadı', etiketle
 /** @typedef {{gecerli:boolean, hatalar:FieldError[]}} ValidationResult */
 /** @typedef {{surum:number, icerik?:Object, tanidiklik?:number, alan_guveni?:Record<string, 1|2|3>, aktif_sure_artis_sn?:number}} AnnotationDraft */
 /** @typedef {{gerekce:'tanimiyorum'|'tanidiklik_dusuk'|'uygun_degil'|'diger', aciklama?:string|null, tanidiklik?:number}} SkipRequest */
-/** @typedef {{metin:string, mod:'durum'|'tarif', dogru_memeler:string[]}} TestQueryCreate */
+/** @typedef {{metin:string, mod:'durum'|'tarif', dogru_memeler:string[], yazan_id?:string}} TestQueryCreate (yazan_id yalnızca admin) */
 /** @typedef {{sebep:string, not?:string|null}} ExclusionVoteRequest */
 /** @typedef {{meme_id:string, sebep:string, not:string|null, zaman:string, karar:'kalsin'|'cikarilsin'|null}} ExclusionVote */
 /** @typedef {{karar:'kalsin'|'cikarilsin', not?:string|null}} ExclusionDecisionRequest */
 /** @typedef {{icerik:Object, kaynak_annotationlar:string[], cozum_notu?:string|null}} GoldCreate */
 /** @typedef {{meme_ids:string[], annotator_id:string, cift_etiket?:boolean, kalibrasyon?:boolean}} AssignmentCreate */
-/** @typedef {{id:string, gorsel_url:string, kucuk_gorsel_url:string, sha256:string, etiket_durumu:string, annotatorlar:Object[], cift_etiket?:boolean, gold_var:boolean}} Meme */
+/** @typedef {{id:string, gorsel_url:string, kucuk_gorsel_url:string, sha256:string, etiket_durumu:string, annotatorlar:Object[], cift_etiket?:boolean, gold_var:boolean, test_seti?:boolean}} Meme */
+/** @typedef {{test_seti?:boolean}} MemeUpdate */
 /** @typedef {Meme & {annotasyonlar?:Object[]}} MemeDetail */
 /** @typedef {{annotation_id:string, meme_id:string, kucuk_gorsel_url:string, durum_kodu:string, cift_etiket:boolean, kalibrasyon:boolean, revizyon_notu?:string|null}} QueueItem */
 /** @typedef {{id:string, meme_id:string, durum_kodu:string, cift_etiket:boolean, kalibrasyon:boolean, icerik:Object, tanidiklik?:number|null, alan_guveni?:Record<string,1|2|3>, surum:number}} Annotation */

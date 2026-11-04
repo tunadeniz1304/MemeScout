@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { api, checkTestQueryLeakage, clearToken, getToken, setToken } from './services/api'
+import { api, clearToken, getToken, setToken } from './services/api'
 import { EXCLUSION_NOTE_MAX, EXCLUSION_REASONS, MEME_STATUS_NAMES, createEmptyAnnotationContent, exclusionReasonName, validateAnnotationLocally } from './services/contracts'
 
 const blankContent = createEmptyAnnotationContent
@@ -55,25 +55,21 @@ function Field({ name, rule = {}, content, update, labels, errors = [], confiden
   return <div className={`field ${error ? 'has-error' : ''}`}>{label}{rule.aciklama && <p className="field-description">{rule.aciklama}</p>}{control}<div className="confidence-row"><label htmlFor={`confidence-${name}`}>Bu alandaki güvenin</label><select id={`confidence-${name}`} value={confidence[name] ?? ''} onChange={(event) => updateConfidence(name, event.target.value ? Number(event.target.value) : null)}><option value="">Belirtme</option><option value="1">1 · Emin değilim</option><option value="2">2 · Kısmen eminim</option><option value="3">3 · Eminim</option></select></div>{error && <p className="field-error">{error.mesaj}</p>}</div>
 }
 
+/** Test seti (ADR-0012): herkes aynı fotoğrafları görür ve her birine, aratınca o memin çıkması gereken cümleleri yazar. */
 function TestQueries({ user }) {
   const [items, setItems] = useState([])
   const [memes, setMemes] = useState([])
-  const [text, setText] = useState('')
-  const [mode, setMode] = useState('durum')
-  const [selected, setSelected] = useState([])
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
   const [loaded, setLoaded] = useState(false)
 
   const userId = user?.id
   const refresh = useCallback(async () => {
     if (!userId) return
-    setError('')
     try {
       const queries = await api.testQueries({ yazan_id: userId })
-      const first = await api.memes({ etiket_durumu: 'gold_hazir', sayfa: 1, boyut: 200 })
+      const first = await api.memes({ test_seti: true, sayfa: 1, boyut: 200 })
       const pages = Math.ceil((first.toplam || first.ogeler?.length || 0) / 200)
-      const rest = await Promise.all(Array.from({ length: Math.max(0, pages - 1) }, (_, index) => api.memes({ etiket_durumu: 'gold_hazir', sayfa: index + 2, boyut: 200 })))
+      const rest = await Promise.all(Array.from({ length: Math.max(0, pages - 1) }, (_, index) => api.memes({ test_seti: true, sayfa: index + 2, boyut: 200 })))
       setItems(queries); setMemes([...(first.ogeler || []), ...rest.flatMap((page) => page.ogeler || [])]); setLoaded(true)
     } catch (cause) { setError(cause.message || 'Test sorguları yüklenemedi.') }
   }, [userId])
@@ -82,32 +78,41 @@ function TestQueries({ user }) {
 
   if (!userId) return <div className="empty-state"><p>Oturum bilgisi yükleniyor…</p></div>
 
-  const toggleMeme = (id) => setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])
-  const create = async (event) => {
-    event.preventDefault(); setBusy(true); setError('')
-    try {
-      if (text.trim().length < 5) throw new Error('Sorgu metni en az 5 karakter olmalı.')
-      if (!selected.length) throw new Error('En az bir gold memi doğru cevap olarak seç.')
-      await checkTestQueryLeakage(userId, selected)
-      await api.createTestQuery({ metin: text.trim(), mod: mode, dogru_memeler: selected })
-      setText(''); setSelected([]); await refresh()
-    } catch (cause) { setError(cause.message || 'Test sorgusu oluşturulamadı.') }
-    finally { setBusy(false) }
-  }
-
+  const testIds = new Set(memes.map((meme) => meme.id))
+  const isFor = (item, memeId) => item.dogru_memeler.length === 1 && item.dogru_memeler[0] === memeId
+  const others = items.filter((item) => !(item.dogru_memeler.length === 1 && testIds.has(item.dogru_memeler[0])))
+  const written = memes.filter((meme) => items.some((item) => isFor(item, meme.id))).length
   const remove = async (id) => {
-    setBusy(true); setError('')
+    setError('')
     try { await api.deleteTestQuery(id); await refresh() }
     catch (cause) { setError(cause.message || 'Sorgu silinemedi.') }
-    finally { setBusy(false) }
   }
 
-  return <div className="queries-page"><div className="page-heading"><div><div className="breadcrumbs">Çalışma alanı <span>›</span> Test sorguları</div><h1>Test sorguları</h1><p>Yalnızca senin yazdığın sorgular gösterilir.</p></div></div>{error && <div className="toast error-banner">{error}<button onClick={() => setError('')}>×</button></div>}<div className="query-layout"><form className="form-card query-form" onSubmit={create}><div className="form-top"><div><span className="eyebrow">DEĞERLENDİRME SETİ</span><h2>Yeni sorgu</h2></div><span className="badge private">Sızıntı kontrolü açık</span></div><label className="query-label">Sorgu biçimi<select value={mode} onChange={(event) => setMode(event.target.value)}><option value="durum">Durum</option><option value="tarif">Tarif</option></select></label><label className="query-label">Sorgu metni<textarea rows="4" minLength={5} value={text} onChange={(event) => setText(event.target.value)} placeholder="Arama sisteminin bulmasını istediğin durumu veya memi tarif et…" required /></label><div className="candidate-heading"><strong>Doğru cevap memeleri</strong><span>{selected.length} seçildi</span></div>{!loaded && !error ? <p className="muted tiny">Gold kayıtlar yükleniyor…</p> : <div className="candidate-list">{memes.map((meme) => <label key={meme.id} className={`candidate ${selected.includes(meme.id) ? 'selected' : ''}`}><input type="checkbox" checked={selected.includes(meme.id)} onChange={() => toggleMeme(meme.id)} /><span className="checkmark">{selected.includes(meme.id) ? '✓' : ''}</span><span><strong>{meme.id}</strong><small>{meme.ad || 'Gold kaydı hazır'}</small></span></label>)}{loaded && memes.length === 0 && <p className="muted tiny">Gold kaydı hazır meme bulunamadı.</p>}</div>}<p className="privacy-hint">Seçilen her meme için katkı ve reviewer bilgisi güvenli biçimde ön kontrol edilir. Sunucu sorguyu ayrıca doğrular.</p><div className="form-actions"><span className="save-state">En az 5 karakter · En az 1 cevap</span><button className="button primary" disabled={busy || !loaded}>{busy ? 'Kontrol ediliyor…' : 'Sorguyu kaydet'} <span>→</span></button></div></form><section className="form-card query-list-card"><div className="form-top"><div><span className="eyebrow">KAYITLARIN</span><h2>Oluşturduğun sorgular</h2></div><button className="text-button" onClick={refresh}>Yenile ↻</button></div>{items.length ? <div className="query-list">{items.map((item) => <article className="query-entry" key={item.id}><span className="badge private">{item.mod === 'durum' ? 'Durum' : 'Tarif'}</span><p>{item.metin}</p><small>Doğru cevaplar: {item.dogru_memeler.join(', ')}</small><button className="text-button danger-link" disabled={busy} onClick={() => remove(item.id)}>Sil</button></article>)}</div> : <p className="muted tiny">Henüz oluşturduğun bir sorgu yok.</p>}</section></div></div>
+  return <div className="queries-page"><div className="page-heading"><div><div className="breadcrumbs">Çalışma alanı <span>›</span> Test sorguları</div><h1>Test sorguları</h1><p>Test setindeki her fotoğraf için, aratınca o memin çıkması gereken cümleleri yaz. Her satır ayrı bir cümle olur; yalnızca kendi yazdıkların görünür.</p></div></div>{error && <div className="toast error-banner">{error}<button onClick={() => setError('')}>×</button></div>}{!loaded && !error ? <p className="muted tiny">Test seti yükleniyor…</p> : memes.length === 0 ? <div className="empty-state"><p>Test setinde henüz fotoğraf yok. Admin test setini belirleyince burada görünür.</p></div> : <><p className="muted tiny test-progress">{memes.length} fotoğraftan {written} tanesine cümle yazdın · toplam {items.length - others.length} cümle</p><div className="test-grid">{memes.map((meme) => <TestMemeCard key={meme.id} meme={meme} queries={items.filter((item) => isFor(item, meme.id))} onSaved={refresh} onRemove={remove} onError={setError} />)}</div></>}{others.length > 0 && <section className="form-card query-list-card test-others"><div className="form-top"><div><span className="eyebrow">KAYITLARIN</span><h2>Diğer sorguların</h2></div></div><div className="query-list">{others.map((item) => <article className="query-entry" key={item.id}><span className="badge private">{item.mod === 'durum' ? 'Durum' : 'Tarif'}</span><p>{item.metin}</p><small>Doğru cevaplar: {item.dogru_memeler.join(', ')}</small><button className="text-button danger-link" onClick={() => remove(item.id)}>Sil</button></article>)}</div></section>}</div>
 }
 
-const formatDateTime = (value) => new Date(value).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+function TestMemeCard({ meme, queries, onSaved, onRemove, onError }) {
+  const [text, setText] = useState('')
+  const [mode, setMode] = useState('durum')
+  const [busy, setBusy] = useState(false)
 
-/** "Bu mem kullanılmasın" oyu (ADR-0011). Kişi yalnızca kendi oyunu görür; oy etiketlemeyi durdurmaz. */
+  const add = async (event) => {
+    event.preventDefault()
+    const lines = text.split('\n').map((line) => line.trim()).filter(Boolean)
+    const short = lines.find((line) => line.length < 5)
+    if (short) { onError(`Her cümle en az 5 karakter olmalı: "${short}"`); return }
+    setBusy(true); onError('')
+    try {
+      // Her satır ayrı bir test sorgusu olur; doğru cevabı bu fotoğraftır.
+      for (const metin of lines) await api.createTestQuery({ metin, mod: mode, dogru_memeler: [meme.id] })
+      setText('')
+    } catch (cause) { onError(cause.message || 'Cümle eklenemedi.') }
+    finally { setBusy(false); await onSaved() }
+  }
+
+  return <article className="form-card test-card"><PoolThumb memeId={meme.id} className="test-thumb" /><div><div className="test-card-head"><strong>{meme.id}</strong><span>{queries.length} cümle</span></div>{queries.length > 0 && <ul className="test-sentences">{queries.map((item) => <li key={item.id}><span className="badge private">{item.mod === 'durum' ? 'Durum' : 'Tarif'}</span><p>{item.metin}</p><button className="text-button danger-link" disabled={busy} onClick={() => onRemove(item.id)}>Sil</button></li>)}</ul>}<form onSubmit={add}><textarea rows="3" value={text} onChange={(event) => setText(event.target.value)} placeholder="Aratınca bu memin çıkması gereken cümle; birden fazlaysa her satıra bir tane" /><div className="test-card-actions"><select value={mode} onChange={(event) => setMode(event.target.value)}><option value="durum">Durum</option><option value="tarif">Tarif</option></select><button className="button primary" disabled={busy || !text.trim()}>{busy ? 'Ekleniyor…' : 'Ekle'}</button></div></form></div></article>
+}
+
 function ExclusionVote({ memeId }) {
   const [vote, setVote] = useState(null)
   const [loaded, setLoaded] = useState(false)
@@ -159,7 +164,7 @@ function ExclusionVote({ memeId }) {
   </div>
 }
 
-function PoolThumb({ memeId }) {
+function PoolThumb({ memeId, className = 'pool-thumb' }) {
   const [url, setUrl] = useState('')
   useEffect(() => {
     let active = true
@@ -167,7 +172,7 @@ function PoolThumb({ memeId }) {
     api.image(memeId, 'kucuk').then((blob) => { objectUrl = URL.createObjectURL(blob); if (active) setUrl(objectUrl); else URL.revokeObjectURL(objectUrl) }).catch(() => {})
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl) }
   }, [memeId])
-  return <div className="pool-thumb">{url ? <img src={url} alt={`${memeId} küçük görseli`} /> : <span>{memeId.slice(0, 1).toUpperCase()}</span>}</div>
+  return <div className={className}>{url ? <img src={url} alt={`${memeId} küçük görseli`} /> : <span>{memeId.slice(0, 1).toUpperCase()}</span>}</div>
 }
 
 /** Admin havuzu (ADR-0011): oylar, sebepler ve notlar açıkça görünür; karar admin'dedir. */
