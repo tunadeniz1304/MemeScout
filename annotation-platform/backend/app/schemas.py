@@ -180,7 +180,7 @@ class AiDraftAddedOut(BaseModel):
 class AiDraftRejectedOut(BaseModel):
     sha256: str
     meme_id: Optional[str] = None
-    sebep: Literal["meme_yok", "tekrar", "zaten_var", "gold_var", "kalibrasyonda", "cift_etiketli", "etiketleme_baslamis"]
+    sebep: Literal["meme_yok", "tekrar", "zaten_var", "gold_var", "kalibrasyonda", "cift_etiketli", "etiketleme_baslamis", "cikarildi"]
     mesaj: str
 
 
@@ -513,6 +513,7 @@ class OverallProgressOut(BaseModel):
     gold_hazir: int
     inceleme_bekleyen: int
     yeniden_atama_bekleyen: int
+    cikarilan: int
 
 
 class UserProgressOut(BaseModel):

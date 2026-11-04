@@ -1,8 +1,10 @@
+import json
+
 import pytest
 from sqlmodel import select
 
-from app.models import Annotation, AuditEntry, MemeExclusionVote
-from tests.yardimci import basliklar
+from app.models import AiDraft, Annotation, AuditEntry, GoldRecord, MemeExclusionVote, simdi
+from tests.yardimci import basliklar, gecerli_icerik
 
 
 @pytest.fixture()
@@ -315,3 +317,245 @@ def test_karar_annotation_lari_silmez(client, session, ali, yonetici, meme, anno
     assert karar_ver(client, yonetici, meme.id, "cikarilsin").status_code == 201
     session.expire_all()
     assert session.get(Annotation, annotation.id) is not None
+
+
+# ------------------------------------------------------------------ çıkarılan meme'in etkileri
+
+@pytest.fixture()
+def cikar(client, yonetici):
+    def cikar(meme):
+        assert oy_ver(client, yonetici, meme.id).status_code == 200
+        assert karar_ver(client, yonetici, meme.id, "cikarilsin").status_code == 201
+
+    return cikar
+
+
+@pytest.fixture()
+def gonderilmis(annotation_olustur):
+    def olustur(meme, kisi, **alanlar):
+        varsayilan = {
+            "durum_kodu": "gonderildi",
+            "icerik": gecerli_icerik(),
+            "tanidiklik": 4,
+            "gonderme_zamani": simdi(),
+            "etiket_listesi_versiyonu": "v1",
+            "sema_versiyonu": "1.0",
+        }
+        return annotation_olustur(meme, kisi, **{**varsayilan, **alanlar})
+
+    return olustur
+
+
+def gold_ekle(session, meme, kaynaklar, reviewer):
+    session.add(GoldRecord(
+        meme_id=meme.id, icerik=gecerli_icerik(), kaynak_annotationlar=[a.id for a in kaynaklar],
+        reviewer_id=reviewer.id, sema_versiyonu="1.0", etiket_listesi_versiyonu="v1",
+    ))
+    session.commit()
+
+
+def sorgu_yaz(client, kisi, dogru_memeler):
+    return client.post(
+        "/api/v1/test-queries",
+        json={"metin": "Sınav sonucu açıklandı", "mod": "durum", "dogru_memeler": dogru_memeler},
+        headers=basliklar(kisi),
+    )
+
+
+def test_cikarilan_meme_kuyruktan_duser(client, ali, yonetici, meme_olustur, annotation_olustur, cikar):
+    cikarilan, kalan = meme_olustur(yonetici), meme_olustur(yonetici)
+    annotation_olustur(cikarilan, ali)
+    kalanin = annotation_olustur(kalan, ali)
+    cikar(cikarilan)
+
+    kuyruk = client.get("/api/v1/me/queue", headers=basliklar(ali)).json()
+    assert [is_["annotation_id"] for is_ in kuyruk] == [kalanin.id]
+
+    karar_ver(client, yonetici, cikarilan.id, "kalsin")
+    assert len(client.get("/api/v1/me/queue", headers=basliklar(ali)).json()) == 2
+
+
+def test_cikarilan_meme_etiketlenemez_ama_atlanabilir(client, ali, yonetici, meme_olustur, annotation_olustur, cikar):
+    meme = meme_olustur(yonetici)
+    baslanmamis = annotation_olustur(meme, ali, cift_etiket=True)
+    cikar(meme)
+
+    yanit = client.post(f"/api/v1/annotations/{baslanmamis.id}/start", headers=basliklar(ali))
+    assert (yanit.status_code, hata_kodu(yanit)) == (409, "MEME_CIKARILDI")
+
+    ikinci = meme_olustur(yonetici)
+    yarim = annotation_olustur(ikinci, ali, durum_kodu="devam_ediyor", icerik=gecerli_icerik(), tanidiklik=4)
+    cikar(ikinci)
+    taslak = client.patch(f"/api/v1/annotations/{yarim.id}/draft", json={"surum": 1, "tanidiklik": 3}, headers=basliklar(ali))
+    gonderim = client.post(f"/api/v1/annotations/{yarim.id}/submit", json={"surum": 1}, headers=basliklar(ali))
+    for yanit in (taslak, gonderim):
+        assert (yanit.status_code, hata_kodu(yanit)) == (409, "MEME_CIKARILDI")
+
+    atlama = client.post(f"/api/v1/annotations/{yarim.id}/skip", json={"gerekce": "diger"}, headers=basliklar(ali))
+    assert atlama.status_code == 200
+    assert atlama.json()["durum_kodu"] == "atlandi"
+
+
+def test_cikarilan_meme_atanamaz(client, ali, ayse, yonetici, meme_olustur, annotation_olustur, cikar):
+    meme, diger = meme_olustur(yonetici), meme_olustur(yonetici)
+    atlanan = annotation_olustur(meme, ali, durum_kodu="atlandi")
+    cikar(meme)
+
+    yanit = client.post(
+        "/api/v1/assignments", json={"annotator_id": ayse.id, "meme_ids": [diger.id, meme.id]}, headers=basliklar(yonetici)
+    )
+    assert (yanit.status_code, hata_kodu(yanit)) == (409, "MEME_CIKARILDI")
+    assert yanit.json()["hata"]["detay"] == {"meme_ids": [meme.id]}
+
+    yanit = client.post(
+        f"/api/v1/annotations/{atlanan.id}/reassign", json={"yeni_annotator_id": ayse.id}, headers=basliklar(yonetici)
+    )
+    assert (yanit.status_code, hata_kodu(yanit)) == (409, "MEME_CIKARILDI")
+
+
+def test_otomatik_dagitim_cikarilan_memeleri_atlar(client, ali, ayse, yonetici, meme_olustur, cikar):
+    cikarilan, kalan = meme_olustur(yonetici), meme_olustur(yonetici)
+    cikar(cikarilan)
+
+    plan = client.post(
+        "/api/v1/assignments/auto",
+        json={"annotator_ids": [ali.id, ayse.id], "cift_etiket_orani": 0, "dry_run": False},
+        headers=basliklar(yonetici),
+    ).json()
+    assert [atama["meme_id"] for atama in plan["atamalar"]] == [kalan.id]
+
+
+def test_cikarilan_meme_incelemeye_girmez(client, ali, can, yonetici, meme_olustur, gonderilmis, cikar):
+    meme = meme_olustur(yonetici)
+    annotation = gonderilmis(meme, ali)
+    assert [oge["meme_id"] for oge in client.get("/api/v1/reviews", headers=basliklar(can)).json()] == [meme.id]
+    cikar(meme)
+
+    assert client.get("/api/v1/reviews", headers=basliklar(can)).json() == []
+    detay = client.get(f"/api/v1/reviews/{meme.id}", headers=basliklar(can))
+    gold = client.post(
+        f"/api/v1/reviews/{meme.id}/gold",
+        json={"icerik": gecerli_icerik(), "kaynak_annotationlar": [annotation.id]},
+        headers=basliklar(can),
+    )
+    revizyon = client.post(
+        f"/api/v1/annotations/{annotation.id}/request-revision", json={"not": "Durum alanı eksik."}, headers=basliklar(can)
+    )
+    for yanit in (detay, gold, revizyon):
+        assert (yanit.status_code, hata_kodu(yanit)) == (409, "MEME_CIKARILDI")
+
+
+def test_cikarilan_meme_test_sorgusuna_cevap_olarak_yazilamaz(client, ali, yonetici, meme_olustur, cikar):
+    meme = meme_olustur(yonetici)
+    cikar(meme)
+    yanit = sorgu_yaz(client, ali, [meme.id])
+    assert (yanit.status_code, hata_kodu(yanit)) == (422, "DOGRULAMA")
+    assert yanit.json()["hata"]["alanlar"] == [
+        {"alan": "dogru_memeler[0]", "kural": "gecersiz_deger", "mesaj": "Bu meme havuz kararıyla kullanımdan çıkarıldı."}
+    ]
+
+
+def test_cikarilan_meme_test_sorgularinin_cevaplarindan_duser(client, ali, yonetici, meme_olustur, cikar):
+    cikarilan, kalan = meme_olustur(yonetici), meme_olustur(yonetici)
+    sorgu_yaz(client, ali, [cikarilan.id, kalan.id])
+    sorgu_yaz(client, ali, [cikarilan.id])
+    cikar(cikarilan)
+
+    cevaplar = sorted(sorgu["dogru_memeler"] for sorgu in client.get("/api/v1/test-queries", headers=basliklar(ali)).json())
+    assert cevaplar == [[], [kalan.id]]
+
+    # Karar geri alınınca cevaplar olduğu gibi döner; veritabanındaki liste değişmez.
+    karar_ver(client, yonetici, cikarilan.id, "kalsin")
+    cevaplar = sorted(sorgu["dogru_memeler"] for sorgu in client.get("/api/v1/test-queries", headers=basliklar(ali)).json())
+    assert cevaplar == [[cikarilan.id], [cikarilan.id, kalan.id]]
+
+
+def test_cikarilan_meme_disa_aktarilmaz(client, session, ali, ayse, can, yonetici, meme_olustur, gonderilmis, cikar):
+    cikarilan, kalan = meme_olustur(yonetici), meme_olustur(yonetici)
+    for meme in (cikarilan, kalan):
+        gold_ekle(session, meme, [gonderilmis(meme, ali, durum_kodu="onaylandi")], ayse)
+        session.add(AiDraft(meme_id=meme.id, kaynak="llm", kart={}, icerik=gecerli_icerik(), yukleyen_id=yonetici.id))
+    session.commit()
+    sorgu_yaz(client, can, [cikarilan.id, kalan.id])
+    sorgu_yaz(client, can, [cikarilan.id])
+    cikar(cikarilan)
+
+    def indir(dosya):
+        yanit = client.get(f"/api/v1/export/{dosya}", headers=basliklar(yonetici))
+        assert yanit.status_code == 200
+        return [json.loads(satir) for satir in yanit.text.splitlines()]
+
+    assert [satir["id"] for satir in indir("gold.jsonl")] == [kalan.id]
+    assert [satir["meme_id"] for satir in indir("annotations_raw.jsonl")] == [kalan.id]
+    assert [satir["id"] for satir in indir("ai_drafts.jsonl")] == [kalan.id]
+    # Cevabı kalmayan sorgu yazılmaz.
+    assert [satir["dogru_memeler"] for satir in indir("test_set.jsonl")] == [[kalan.id]]
+
+
+def test_ilerleme_cikarilan_memeleri_ayri_sayar(client, ali, yonetici, meme_olustur, annotation_olustur, cikar):
+    bos, atanmis, kalan = meme_olustur(yonetici), meme_olustur(yonetici), meme_olustur(yonetici)
+    annotation_olustur(atanmis, ali)
+    cikar(bos)
+    cikar(atanmis)
+
+    istatistik = client.get("/api/v1/stats/progress", headers=basliklar(ali)).json()
+    assert istatistik["genel"] == {
+        "toplam_meme": 1,
+        "atanmamis": 1,
+        "gold_hazir": 0,
+        "inceleme_bekleyen": 0,
+        "yeniden_atama_bekleyen": 0,
+        "cikarilan": 2,
+    }
+    kisiler = {satir["kullanici"]["id"]: satir for satir in istatistik["kullanicilar"]}
+    assert (kisiler[ali.id]["atanan"], kisiler[ali.id]["kalan"]) == (0, 0)
+
+
+def test_uyum_cikarilan_memeleri_saymaz(client, ali, ayse, yonetici, meme_olustur, annotation_olustur, gonderilmis, cikar):
+    cift = meme_olustur(yonetici)
+    gonderilmis(cift, ali, cift_etiket=True)
+    gonderilmis(cift, ayse, cift_etiket=True)
+    yarim = meme_olustur(yonetici)
+    gonderilmis(yarim, ali, cift_etiket=True)
+    annotation_olustur(yarim, ayse, cift_etiket=True, durum_kodu="devam_ediyor")
+    assert "etiketler" not in client.get("/api/v1/stats/agreement", headers=basliklar(ali)).json()
+
+    # Çıkarılan meme'in yarım kalan çift etiketlemesi kör etiketlemeyi sürdürmez.
+    cikar(yarim)
+    uyum = client.get("/api/v1/stats/agreement", headers=basliklar(ali)).json()
+    assert uyum["cift_etiketli_meme_sayisi"] == 1
+    assert "etiketler" in uyum
+
+    cikar(cift)
+    assert client.get("/api/v1/stats/agreement", headers=basliklar(ali)).json()["cift_etiketli_meme_sayisi"] == 0
+
+
+def test_yeniden_kontrol_cikarilan_memeleri_listelemez(client, ali, yonetici, meme_olustur, gonderilmis, cikar):
+    meme = meme_olustur(yonetici)
+    gonderilmis(meme, ali, icerik=gecerli_icerik(duygu=["panik"]))
+    client.patch("/api/v1/label-lists/labels/duygu/panik", json={"aktif": False}, headers=basliklar(yonetici))
+    assert len(client.get("/api/v1/recheck", headers=basliklar(yonetici)).json()) == 1
+
+    cikar(meme)
+    assert client.get("/api/v1/recheck", headers=basliklar(yonetici)).json() == []
+
+
+def test_cikarilan_meme_e_ai_taslagi_eklenmez(client, yonetici, meme_olustur, cikar):
+    meme = meme_olustur(yonetici)
+    cikar(meme)
+    yanit = client.post(
+        "/api/v1/memes/ai-drafts",
+        json={"taslaklar": [{"sha256": meme.sha256, "kaynak": "llm", "kart": gecerli_icerik()}]},
+        headers=basliklar(yonetici),
+    )
+    assert yanit.json()["eklenen"] == []
+    assert [(red["meme_id"], red["sebep"]) for red in yanit.json()["reddedilen"]] == [(meme.id, "cikarildi")]
+
+
+def test_cikarilan_memeler_listede_durumlariyla_gorunur(client, ali, yonetici, meme_olustur, cikar):
+    cikarilan, kalan = meme_olustur(yonetici), meme_olustur(yonetici)
+    cikar(cikarilan)
+
+    sayfa = client.get("/api/v1/memes", params={"etiket_durumu": "cikarildi"}, headers=basliklar(ali)).json()
+    assert [meme["id"] for meme in sayfa["ogeler"]] == [cikarilan.id]
+    assert len(client.get("/api/v1/memes", headers=basliklar(ali)).json()["ogeler"]) == 2

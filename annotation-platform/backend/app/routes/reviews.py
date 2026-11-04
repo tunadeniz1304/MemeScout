@@ -6,6 +6,7 @@ from app.database import get_session
 from app.denetim import ANNOTATION, GOLD, GUNCELLEME, OLUSTURMA, denetle
 from app.errors import ApiHatasi
 from app.etiketler import guncel_liste
+from app.havuz import cikarilmamis_olmali
 from app.kurallar import (
     MemeBaglami,
     annotation_gorebilir_mi,
@@ -59,7 +60,7 @@ def inceleme_kuyrugu(
     baglam = MemeBaglami(session)
     kuyruk = []
     for meme_id, annotationlar in baglam.annotationlar.items():
-        if baglam.gold_var(meme_id) or not incelemeye_hazir_mi(annotationlar):
+        if baglam.gold_var(meme_id) or meme_id in baglam.cikarilanlar or not incelemeye_hazir_mi(annotationlar):
             continue
         if not reviewer_olabilir_mi(kullanici.id, annotationlar):
             continue
@@ -82,6 +83,7 @@ def inceleme_detayi(
     kullanici: User = Depends(aktif_kullanici),
 ):
     meme = meme_getir(session, meme_id)
+    cikarilmamis_olmali(session, meme_id)
     tum_annotationlar = meme_annotationlari(session, meme_id)
     reviewer_olmali(kullanici, tum_annotationlar)
     gold_var = session.get(GoldRecord, meme_id) is not None
@@ -106,6 +108,7 @@ def gold_onayla(
     kullanici: User = Depends(aktif_kullanici),
 ):
     meme_getir(session, meme_id)
+    cikarilmamis_olmali(session, meme_id)
     tum_annotationlar = meme_annotationlari(session, meme_id)
     reviewer_olmali(kullanici, tum_annotationlar)
     if session.get(GoldRecord, meme_id) is not None:
@@ -162,6 +165,7 @@ def revizyon_iste(
     kullanici: User = Depends(aktif_kullanici),
 ):
     annotation = annotation_getir(session, annotation_id, kilitle=True)
+    cikarilmamis_olmali(session, annotation.meme_id)
     tum_annotationlar = meme_annotationlari(session, annotation.meme_id)
     reviewer_olmali(kullanici, tum_annotationlar)
     if annotation.kalibrasyon:

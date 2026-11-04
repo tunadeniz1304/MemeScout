@@ -72,6 +72,7 @@ def test_ilerleme_panosu(client, session, yonetici, ali, ayse, can, meme_olustur
         "gold_hazir": 1,
         "inceleme_bekleyen": 1,
         "yeniden_atama_bekleyen": 1,
+        "cikarilan": 0,
     }
     kisiler = {satir["kullanici"]["id"]: satir for satir in istatistik["kullanicilar"]}
     assert kisiler[ali.id] == {

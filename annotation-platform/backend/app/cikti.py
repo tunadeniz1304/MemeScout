@@ -122,12 +122,13 @@ def gold(kayit, kisiler: dict[str, User]) -> dict:
     }
 
 
-def test_sorgusu(sorgu, kisiler: dict[str, User]) -> dict:
+def test_sorgusu(sorgu, kisiler: dict[str, User], cikarilanlar: set[str]) -> dict:
     return {
         "id": sorgu.id,
         "metin": sorgu.metin,
         "mod": sorgu.mod,
-        "dogru_memeler": sorgu.dogru_memeler,
+        # Çıkarılan meme doğru cevaplarda görünmez; kayıttaki liste değişmez, karar geri alınırsa döner.
+        "dogru_memeler": [meme_id for meme_id in sorgu.dogru_memeler if meme_id not in cikarilanlar],
         "yazan": kullanici_ref(kisiler.get(sorgu.yazan_id)),
         "zaman": sorgu.zaman,
     }

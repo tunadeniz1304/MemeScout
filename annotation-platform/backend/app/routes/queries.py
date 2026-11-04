@@ -8,6 +8,7 @@ from app import cikti
 from app.database import get_session
 from app.denetim import GUNCELLEME, OLUSTURMA, SILME, TEST_SORGUSU, denetle
 from app.errors import ApiHatasi
+from app.havuz import cikarilmis_memeler
 from app.kurallar import gold_katkicilari
 from app.models import Meme, TestQuery, User
 from app.schemas import SorguModu, TestQueryCreateIn, TestQueryOut, TestQueryUpdateIn
@@ -18,11 +19,16 @@ router = APIRouter(prefix="/api/v1/test-queries", tags=["test-queries"])
 
 def dogru_memeleri_dogrula(session: Session, yazan_id: str, meme_idleri: list[str]) -> None:
     hatalar = []
+    cikarilanlar = cikarilmis_memeler(session, meme_idleri)
     for sira, meme_id in enumerate(meme_idleri):
         if meme_idleri.index(meme_id) != sira:
             hatalar.append({"alan": f"dogru_memeler[{sira}]", "kural": "tekrar", "mesaj": "Bu meme listede tekrar ediyor."})
         elif session.get(Meme, meme_id) is None:
             hatalar.append({"alan": f"dogru_memeler[{sira}]", "kural": "gecersiz_deger", "mesaj": f"'{meme_id}' adında bir meme yok."})
+        elif meme_id in cikarilanlar:
+            hatalar.append({
+                "alan": f"dogru_memeler[{sira}]", "kural": "gecersiz_deger", "mesaj": "Bu meme havuz kararıyla kullanımdan çıkarıldı.",
+            })
     if hatalar:
         raise ApiHatasi(422, "DOGRULAMA", "Doğru cevap listesi geçersiz.", alanlar=hatalar)
     # Kural, sorguyu düzenleyen kişiye değil sorguyu yazana bakar.
@@ -61,7 +67,8 @@ def sorgulari_listele(
     if mod:
         sorgu = sorgu.where(TestQuery.mod == mod)
     kisiler = cikti.kullanicilar(session)
-    return [cikti.test_sorgusu(kayit, kisiler) for kayit in session.exec(sorgu).all()]
+    cikarilanlar = cikarilmis_memeler(session)
+    return [cikti.test_sorgusu(kayit, kisiler, cikarilanlar) for kayit in session.exec(sorgu).all()]
 
 
 @router.post("", response_model=TestQueryOut, status_code=201)
@@ -76,7 +83,7 @@ def sorgu_ekle(
     denetle(session, kullanici.id, TEST_SORGUSU, sorgu.id, OLUSTURMA, yeni=sorgu_degeri(sorgu))
     session.commit()
     session.refresh(sorgu)
-    return cikti.test_sorgusu(sorgu, cikti.kullanicilar(session))
+    return cikti.test_sorgusu(sorgu, cikti.kullanicilar(session), set())
 
 
 @router.patch("/{query_id}", response_model=TestQueryOut)
@@ -97,7 +104,7 @@ def sorgu_guncelle(
             setattr(sorgu, alan, deger)
     session.commit()
     session.refresh(sorgu)
-    return cikti.test_sorgusu(sorgu, cikti.kullanicilar(session))
+    return cikti.test_sorgusu(sorgu, cikti.kullanicilar(session), cikarilmis_memeler(session, sorgu.dogru_memeler))
 
 
 @router.delete("/{query_id}", status_code=204)

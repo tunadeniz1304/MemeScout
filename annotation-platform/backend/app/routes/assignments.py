@@ -7,6 +7,7 @@ from app import cikti
 from app.database import get_session
 from app.denetim import ANNOTATION, GUNCELLEME, OLUSTURMA, denetle
 from app.errors import ApiHatasi
+from app.havuz import cikarilmamis_olmali, cikarilmis_memeler
 from app.kurallar import aktif_mi, cift_etiket_mi, grubu
 from app.models import ATLANDI, AiDraft, Annotation, GoldRecord, Meme, User
 from app.schemas import (
@@ -81,6 +82,12 @@ def elle_ata(
             hatalar.append(_alan_hatasi(f"meme_ids[{sira}]", "gecersiz_deger", f"'{meme_id}' adında bir meme yok."))
     if hatalar:
         raise ApiHatasi(422, "DOGRULAMA", "Bazı meme'ler geçersiz.", alanlar=hatalar)
+    cikarilanlar = cikarilmis_memeler(session, veri.meme_ids)
+    if cikarilanlar:
+        raise ApiHatasi(
+            409, "MEME_CIKARILDI", "Havuz kararıyla çıkarılan meme'e annotator atanamaz.",
+            detay={"meme_ids": [meme_id for meme_id in veri.meme_ids if meme_id in cikarilanlar]},
+        )
 
     mevcutlar = annotationlari_meme_bazinda(session, veri.meme_ids)
     goldlu = set(session.exec(select(GoldRecord.meme_id).where(GoldRecord.meme_id.in_(veri.meme_ids))).all())
@@ -185,9 +192,10 @@ def otomatik_ata(
     kalibrasyondakiler = set(session.exec(select(Annotation.meme_id).where(Annotation.kalibrasyon == True)).all())  # noqa: E712
     ai_memeler = set(session.exec(select(AiDraft.meme_id)).all())
     goldlu = set(session.exec(select(GoldRecord.meme_id)).all())
+    cikarilanlar = cikarilmis_memeler(session)
     atanmamislar = [
         meme for meme in session.exec(select(Meme).order_by(Meme.id)).all()
-        if meme.id not in ana_turdakiler and meme.id not in goldlu
+        if meme.id not in ana_turdakiler and meme.id not in goldlu and meme.id not in cikarilanlar
     ]
     atamalar, yuk, ikili_yuku = dagitim_plani(atanmamislar, kalibrasyondakiler | ai_memeler, annotatorlar, veri.cift_etiket_orani)
 
@@ -221,6 +229,7 @@ def yeniden_ata(
     eski = session.exec(select(Annotation).where(Annotation.id == annotation_id).with_for_update()).first()
     if eski is None:
         raise ApiHatasi(404, "BULUNAMADI", "Annotation bulunamadı.")
+    cikarilmamis_olmali(session, eski.meme_id)
     if eski.durum_kodu != ATLANDI:
         raise ApiHatasi(409, "GECERSIZ_DURUM_GECISI", "Yalnızca atlanan annotation yeniden atanabilir.")
     if eski.yerine_gecen_id is not None:
