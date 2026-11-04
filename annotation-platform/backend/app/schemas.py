@@ -107,7 +107,7 @@ class LabelUpdate(BaseModel):
 
 # ------------------------------------------------------------------ meme
 
-MemeEtiketDurumu = Literal["atanmadi", "etiketleniyor", "inceleme_bekliyor", "gold_hazir", "yeniden_kontrol"]
+MemeEtiketDurumu = Literal["atanmadi", "etiketleniyor", "inceleme_bekliyor", "gold_hazir", "yeniden_kontrol", "cikarildi"]
 DurumKodu = Literal["atandi", "devam_ediyor", "gonderildi", "revizyon_gerekli", "onaylandi", "atlandi"]
 
 
@@ -407,6 +407,69 @@ class GoldRecordOut(BaseModel):
 
 class RevisionRequestIn(BaseModel):
     not_: DoluMetin = Field(alias="not")
+
+
+# ------------------------------------------------------------------ kullanılmasın oyu ve havuz
+
+KullanilmasinSebebi = Literal["kalitesiz_gorsel", "mem_degil", "anlasilmaz", "uygunsuz", "kopya", "diger"]
+HavuzKarari = Literal["kalsin", "cikarilsin"]
+
+
+def _bossa_yok(metin: Optional[str]) -> Optional[str]:
+    return metin or None
+
+
+# Boşluktan ibaret not hiç yazılmamış sayılır.
+OyNotu = Annotated[Optional[Annotated[str, StringConstraints(strip_whitespace=True, max_length=300)]], AfterValidator(_bossa_yok)]
+KararNotu = Annotated[Optional[Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)]], AfterValidator(_bossa_yok)]
+
+
+class ExclusionVoteIn(BaseModel):
+    sebep: KullanilmasinSebebi
+    not_: OyNotu = Field(default=None, alias="not")
+
+
+class ExclusionVoteOut(BaseModel):
+    meme_id: str
+    sebep: KullanilmasinSebebi
+    not_: Optional[str] = Field(default=None, alias="not")
+    zaman: Zaman
+    karar: Optional[HavuzKarari] = None
+
+
+class ExclusionDecisionIn(BaseModel):
+    karar: HavuzKarari
+    not_: KararNotu = Field(default=None, alias="not")
+
+
+class ExclusionDecisionOut(BaseModel):
+    meme_id: str
+    karar: HavuzKarari
+    not_: Optional[str] = Field(default=None, alias="not")
+    karar_veren: Optional[UserRefOut]
+    zaman: Zaman
+
+
+class ReasonCountOut(BaseModel):
+    sebep: KullanilmasinSebebi
+    sayi: int
+
+
+class PoolVoteOut(BaseModel):
+    takma_ad: str
+    sebep: KullanilmasinSebebi
+    not_: Optional[str] = Field(default=None, alias="not")
+    zaman: Zaman
+
+
+class ExclusionPoolItemOut(BaseModel):
+    meme_id: str
+    kucuk_gorsel_url: str
+    etiket_durumu: MemeEtiketDurumu
+    oy_sayisi: int
+    sebepler: list[ReasonCountOut]
+    oylar: list[PoolVoteOut]
+    son_karar: Optional[ExclusionDecisionOut] = None
 
 
 # ------------------------------------------------------------------ test sorgusu

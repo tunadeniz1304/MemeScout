@@ -125,6 +125,30 @@ class Comment(SQLModel, table=True):
     tur: str
     cozuldu: bool = False
 
+class MemeExclusionDecision(SQLModel, table=True):
+    # Admin'in havuz kararı (ADR-0011): "kalsin" ya da "cikarilsin". Her karar ayrı kayıttır;
+    # meme için geçerli olan, en son verilen karardır.
+    __tablename__ = "meme_exclusion_decision"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    meme_id: str = Field(foreign_key="meme.id", index=True)
+    karar: str
+    notu: Optional[str] = None
+    karar_veren_id: str = Field(foreign_key="user.id")
+    zaman: datetime = Field(default_factory=simdi)
+
+class MemeExclusionVote(SQLModel, table=True):
+    # "Bu mem kullanılmasın" oyu (ADR-0011); kişi başına meme başına bir oy.
+    __tablename__ = "meme_exclusion_vote"
+
+    meme_id: str = Field(primary_key=True, foreign_key="meme.id")
+    kullanici_id: str = Field(primary_key=True, foreign_key="user.id")
+    sebep: str
+    notu: Optional[str] = None
+    zaman: datetime = Field(default_factory=simdi)
+    # Oyu sonuçlandıran karar. Boşsa oy karar bekliyor ve meme havuzda.
+    karar_id: Optional[int] = Field(default=None, foreign_key="meme_exclusion_decision.id")
+
 class LabelListVersion(SQLModel, table=True):
     # Her versiyon listenin tam halini tutar; eski versiyonla etiketlenen kayıtlar bununla karşılaştırılır.
     __tablename__ = "label_list_version"

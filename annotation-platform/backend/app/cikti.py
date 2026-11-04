@@ -1,10 +1,12 @@
 """Veritabanı kayıtlarından sözleşmedeki yanıt nesnelerini üreten yardımcılar."""
 
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Optional
 
 from sqlmodel import Session, select
 
+from app.havuz import SEBEPLER
 from app.kurallar import MemeBaglami
 from app.models import LabelListVersion, Meme, User
 from app.sema import bos_icerik
@@ -128,4 +130,37 @@ def test_sorgusu(sorgu, kisiler: dict[str, User]) -> dict:
         "dogru_memeler": sorgu.dogru_memeler,
         "yazan": kullanici_ref(kisiler.get(sorgu.yazan_id)),
         "zaman": sorgu.zaman,
+    }
+
+
+def kullanilmasin_oyu(oy, karar: Optional[str]) -> dict:
+    return {"meme_id": oy.meme_id, "sebep": oy.sebep, "not": oy.notu, "zaman": oy.zaman, "karar": karar}
+
+
+def havuz_karari(karar, kisiler: dict[str, User]) -> dict:
+    return {
+        "meme_id": karar.meme_id,
+        "karar": karar.karar,
+        "not": karar.notu,
+        "karar_veren": kullanici_ref(kisiler.get(karar.karar_veren_id)),
+        "zaman": karar.zaman,
+    }
+
+
+def havuz_ogesi(meme_id: str, etiket_durumu: str, oylar: list, son_karar, kisiler: dict[str, User]) -> dict:
+    sayilar = Counter(oy.sebep for oy in oylar)
+    return {
+        "meme_id": meme_id,
+        "kucuk_gorsel_url": f"/api/v1/memes/{meme_id}/image?boyut=kucuk",
+        "etiket_durumu": etiket_durumu,
+        "oy_sayisi": len(oylar),
+        "sebepler": [
+            {"sebep": sebep, "sayi": sayi}
+            for sebep, sayi in sorted(sayilar.items(), key=lambda oge: (-oge[1], SEBEPLER.index(oge[0])))
+        ],
+        "oylar": [
+            {"takma_ad": kisiler[oy.kullanici_id].takma_ad, "sebep": oy.sebep, "not": oy.notu, "zaman": oy.zaman}
+            for oy in sorted(oylar, key=lambda oy: (oy.zaman, oy.kullanici_id))
+        ],
+        "son_karar": havuz_karari(son_karar, kisiler) if son_karar else None,
     }
