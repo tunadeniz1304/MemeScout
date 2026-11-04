@@ -28,6 +28,11 @@ info:
        gönderilen annotation otomatik onaylanmaz.
     8. AI taslağı (ADR-0010): AI taslağı olan meme tek etiketlidir; kalibrasyona ve çift etiketli
        alt kümeye alınamaz. Taslak doğrudan gold olmaz, annotator'ın formuna dolu gelir.
+    9. Kullanılmasın oyu (ADR-0011): Kişi yalnızca kendi oyunu görür; başkalarının oyları yalnızca
+       admin'in havuz sayfasında (`GET /exclusion-pool`) görünür. Admin'in "çıkarılsın" dediği meme
+       (`etiket_durumu = cikarildi`) kuyruklardan, atamalardan, incelemeden, uyum hesabından,
+       dışa aktarımdan ve test sorgularının doğru cevaplarından düşer; o meme'de start, draft,
+       submit, revizyon, inceleme ve gold işlemleri 409 `MEME_CIKARILDI` döner.
 
     Kalibrasyon annotation'ları (`kalibrasyon: true`) ayrı bir turdur: gold kaydına, inceleme
     kuyruğuna, meme'in `etiket_durumu`na ve uyum hesabına katılmaz.
@@ -443,6 +448,62 @@ paths:
               schema: { $ref: '#/components/schemas/Comment' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
 
+  /memes/{meme_id}/exclusion-vote:
+    parameters:
+      - $ref: '#/components/parameters/MemeId'
+    get:
+      tags: [memes]
+      summary: Kendi "kullanılmasın" oyum
+      description: Kişi yalnızca kendi oyunu görür (ADR-0011). Oy yoksa 404 döner.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExclusionVote' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [memes]
+      summary: Oy ver ya da oyu güncelle
+      description: |
+        Kişi başına meme başına tek oy vardır; ikinci istek oyu günceller. Tek oy meme'i havuza
+        düşürür. "Kalsın" kararından sonra verilen ya da güncellenen oy meme'i yeniden havuza açar.
+        Oy etiketlemeyi durdurmaz; annotation durumu değişmez. Çıkarılmış meme'e oy verilmez,
+        verilmiş oy da güncellenmez.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExclusionVoteRequest' }
+      responses:
+        '200':
+          description: Kaydedilen oy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExclusionVote' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Meme çıkarılmış (`hata.kod = MEME_CIKARILDI`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+    delete:
+      tags: [memes]
+      summary: Oyu geri çek
+      description: |
+        Çıkarılmış meme'in oyları kararın dayanağıdır; admin kararı "kalsın" ile geri almadan
+        oy geri çekilmez.
+      responses:
+        '204':
+          description: Geri çekildi
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Meme çıkarılmış (`hata.kod = MEME_CIKARILDI`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   # ---------------------------------------------------------------- comments
   /comments:
     get:
@@ -512,8 +573,9 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409':
           description: |
-            Bu meme bu kişiye zaten atanmış (`hata.kod = ZATEN_ATANMIS`) ya da AI taslağı olan meme
+            Bu meme bu kişiye zaten atanmış (`hata.kod = ZATEN_ATANMIS`), AI taslağı olan meme
             kalibrasyona veya çift etiketlemeye alınmak istendi (`hata.kod = AI_TASLAKLI_MEME`)
+            ya da meme çıkarılmış (`hata.kod = MEME_CIKARILDI`)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -577,6 +639,7 @@ paths:
           description: |
             Virgülle birden fazla verilebilir (ör. atandi,devam_ediyor,revizyon_gerekli).
             Verilmezse üzerinde çalışılabilecek işler döner: atandi, devam_ediyor, revizyon_gerekli.
+            Çıkarılan meme'lerin annotation'ları listelenmez.
           schema: { type: string }
       responses:
         '200':
@@ -648,7 +711,10 @@ paths:
               schema: { $ref: '#/components/schemas/DraftSaved' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409':
-          description: Sürüm çakışması (`hata.kod = SURUM_CAKISMASI`, `hata.detay.guncel_surum`)
+          description: |
+            Sürüm çakışması (`hata.kod = SURUM_CAKISMASI`, `hata.detay.guncel_surum`), annotation
+            düzenlenebilir durumda değil (`hata.kod = GECERSIZ_DURUM_GECISI`) ya da meme çıkarılmış
+            (`hata.kod = MEME_CIKARILDI`)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -777,6 +843,7 @@ paths:
         Annotation'larının hepsi gönderilmiş, gold kaydı olmayan meme'ler: çift etiketli meme'de
         anlaşmazlık çözümü, tek etiketli meme'de ikinci bakış (ADR-0009).
         Yalnızca giriş yapan kullanıcının reviewer olabileceği (annotator'ı olmadığı) meme'ler döner.
+        Çıkarılan meme'ler kuyrukta görünmez.
       responses:
         '200':
           description: OK
@@ -840,6 +907,9 @@ paths:
     get:
       tags: [test-queries]
       summary: Test sorguları
+      description: |
+        Çıkarılan meme'ler `dogru_memeler` listesinde görünmez; bütün cevapları çıkarılan sorgunun
+        listesi boş döner.
       parameters:
         - name: yazan_id
           in: query
@@ -858,6 +928,7 @@ paths:
     post:
       tags: [test-queries]
       summary: Test sorgusu ekle
+      description: Çıkarılmış meme doğru cevap olarak verilemez (`hata.alanlar[].kural = gecersiz_deger`).
       requestBody:
         required: true
         content:
@@ -886,6 +957,7 @@ paths:
     patch:
       tags: [test-queries]
       summary: Test sorgusunu düzenle (sadece yazan veya admin)
+      description: Yeni `dogru_memeler` listesi çıkarılmış meme içeremez (`hata.alanlar[].kural = gecersiz_deger`).
       requestBody:
         required: true
         content:
@@ -937,6 +1009,59 @@ paths:
               schema: { $ref: '#/components/schemas/AgreementStats' }
 
   # ---------------------------------------------------------------- admin
+  /exclusion-pool:
+    get:
+      tags: [admin]
+      summary: Kullanılmasın havuzu (admin)
+      description: |
+        `durum=bekliyor` (varsayılan): karar bekleyen, en az bir geçerli oyu olan meme'ler; en çok oy
+        alan önce. `durum=cikarildi`: çıkarılmış meme'ler ve onları çıkaran karar. Havuz bir admin
+        aracıdır ve kör etiketleme kuralına göre süzülmez (ADR-0011).
+      parameters:
+        - name: durum
+          in: query
+          schema:
+            type: string
+            enum: [bekliyor, cikarildi]
+            default: bekliyor
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ExclusionPoolItem' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /exclusion-pool/{meme_id}/decision:
+    parameters:
+      - $ref: '#/components/parameters/MemeId'
+    post:
+      tags: [admin]
+      summary: Havuzdaki meme için karar (admin)
+      description: |
+        `kalsin`: meme havuzdan çıkar; çıkarılmış bir meme'e verilirse onu geri alır.
+        `cikarilsin`: meme kullanımdan düşer. Karar, o ana kadarki oyları sonuçlandırır.
+        Havuzda olmayan (geçerli oyu olmayan, çıkarılmamış) meme'e karar verilirse 409
+        `HAVUZDA_DEGIL`, zaten çıkarılmış meme'e yeniden `cikarilsin` denirse 409 `MEME_CIKARILDI`
+        döner.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExclusionDecisionRequest' }
+      responses:
+        '201':
+          description: Kaydedilen karar
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExclusionDecision' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+
   /recheck:
     get:
       tags: [admin]
@@ -992,6 +1117,8 @@ paths:
         - annotations_raw.jsonl: satır başına `Annotation` (kullanıcılar takma adlı)
         - test_set.jsonl: satır başına `TestQuery` (yazan takma adlı)
         - ai_drafts.jsonl: satır başına `AiDraftExportRow` (ham kart değiştirilmeden)
+        Çıkarılan meme'ler dışa aktarılmaz; test sorgularının doğru cevaplarından da düşer, cevabı
+        kalmayan sorgu yazılmaz.
       responses:
         '200':
           description: NDJSON dosyası (Content-Disposition attachment)
@@ -1078,7 +1205,7 @@ components:
                 Makine tarafından okunabilir hata kodu. Örnekler: YETKISIZ, YASAK, KOR_ETIKETLEME,
                 BULUNAMADI, KOPYA, ZATEN_ATANMIS, GECERSIZ_DURUM_GECISI, SURUM_CAKISMASI, CAKISMA,
                 DOGRULAMA, TANIDIKLIK_DUSUK, SIZINTI, REVIEWER_ANNOTATOR_OLAMAZ, KAYIT_KAPALI,
-                DESTEKLENMEYEN_TUR, BOZUK_DOSYA, AI_TASLAKLI_MEME
+                DESTEKLENMEYEN_TUR, BOZUK_DOSYA, AI_TASLAKLI_MEME, MEME_CIKARILDI, HAVUZDA_DEGIL
               example: DOGRULAMA
             mesaj:
               type: string
@@ -1322,8 +1449,10 @@ components:
     # ------------------------------------------------------------ meme
     MemeLabelStatus:
       type: string
-      description: Meme'in annotation'larından türetilen genel durum
-      enum: [atanmadi, etiketleniyor, inceleme_bekliyor, gold_hazir, yeniden_kontrol]
+      description: |
+        Meme'in annotation'larından türetilen genel durum. `cikarildi`: admin havuz kararıyla
+        kullanımdan çıkardı (ADR-0011); diğer durumların önüne geçer.
+      enum: [atanmadi, etiketleniyor, inceleme_bekliyor, gold_hazir, yeniden_kontrol, cikarildi]
 
     Meme:
       type: object
@@ -1831,7 +1960,7 @@ components:
               meme_id: { type: string, nullable: true }
               sebep:
                 type: string
-                enum: [meme_yok, tekrar, zaten_var, gold_var, kalibrasyonda, cift_etiketli, etiketleme_baslamis]
+                enum: [meme_yok, tekrar, zaten_var, gold_var, kalibrasyonda, cift_etiketli, etiketleme_baslamis, cikarildi]
               mesaj: { type: string }
 
     AiDraftExportRow:
@@ -1850,6 +1979,102 @@ components:
           description: İçe aktarılan ham kart
         icerik: { $ref: '#/components/schemas/AnnotationContent' }
         olusturma_zamani: { type: string, format: date-time }
+
+    ExclusionReason:
+      type: string
+      description: |
+        kalitesiz_gorsel = Kalitesiz görsel, mem_degil = Mem değil, anlasilmaz = Anlaşılmaz,
+        uygunsuz = Uygunsuz / rahatsız edici, kopya = Kopya, diger = Diğer
+      enum: [kalitesiz_gorsel, mem_degil, anlasilmaz, uygunsuz, kopya, diger]
+
+    ExclusionVoteRequest:
+      type: object
+      required: [sebep]
+      properties:
+        sebep: { $ref: '#/components/schemas/ExclusionReason' }
+        not:
+          type: string
+          nullable: true
+          maxLength: 300
+
+    ExclusionVote:
+      type: object
+      required: [meme_id, sebep, zaman]
+      properties:
+        meme_id: { type: string }
+        sebep: { $ref: '#/components/schemas/ExclusionReason' }
+        not: { type: string, nullable: true }
+        zaman:
+          type: string
+          format: date-time
+          description: Oyun verildiği ya da son güncellendiği an
+        karar:
+          type: string
+          nullable: true
+          enum: [kalsin, cikarilsin]
+          description: Oyu sonuçlandıran admin kararı; null = karar bekliyor
+
+    ExclusionDecisionRequest:
+      type: object
+      required: [karar]
+      properties:
+        karar:
+          type: string
+          enum: [kalsin, cikarilsin]
+        not:
+          type: string
+          nullable: true
+          maxLength: 1000
+
+    ExclusionDecision:
+      type: object
+      required: [meme_id, karar, karar_veren, zaman]
+      properties:
+        meme_id: { type: string }
+        karar:
+          type: string
+          enum: [kalsin, cikarilsin]
+        not: { type: string, nullable: true }
+        karar_veren: { $ref: '#/components/schemas/UserRef' }
+        zaman: { type: string, format: date-time }
+
+    ExclusionPoolItem:
+      type: object
+      required: [meme_id, kucuk_gorsel_url, etiket_durumu, oy_sayisi, sebepler, oylar]
+      properties:
+        meme_id: { type: string }
+        kucuk_gorsel_url: { type: string }
+        etiket_durumu: { $ref: '#/components/schemas/MemeLabelStatus' }
+        oy_sayisi:
+          type: integer
+          description: Bekleyen meme'de geçerli oy sayısı; çıkarılmışta onu çıkaran karara kadar verilen oylar
+        sebepler:
+          type: array
+          description: Sebep bazında oy sayısı, çoktan aza
+          items:
+            type: object
+            required: [sebep, sayi]
+            properties:
+              sebep: { $ref: '#/components/schemas/ExclusionReason' }
+              sayi: { type: integer }
+        oylar:
+          type: array
+          description: Eskiden yeniye
+          items:
+            type: object
+            required: [takma_ad, sebep, zaman]
+            properties:
+              takma_ad:
+                type: string
+                description: Oy verenin takma adı (ör. a2)
+              sebep: { $ref: '#/components/schemas/ExclusionReason' }
+              not: { type: string, nullable: true }
+              zaman: { type: string, format: date-time }
+        son_karar:
+          allOf:
+            - $ref: '#/components/schemas/ExclusionDecision'
+          nullable: true
+          description: Meme için verilmiş son karar (bekleyende önceki bir "kalsın" olabilir)
 
     RecheckItem:
       type: object
@@ -1928,7 +2153,7 @@ components:
         mod: { $ref: '#/components/schemas/QueryMode' }
         dogru_memeler:
           type: array
-          minItems: 1
+          description: Çıkarılan meme'ler görünmez; bütün cevapları çıkarılan sorguda boş liste
           items: { type: string }
         yazan: { $ref: '#/components/schemas/UserRef' }
         zaman: { type: string, format: date-time }
@@ -1969,6 +2194,9 @@ components:
             gold_hazir: { type: integer }
             inceleme_bekleyen: { type: integer }
             yeniden_atama_bekleyen: { type: integer }
+            cikarilan:
+              type: integer
+              description: Havuz kararıyla çıkarılan meme sayısı; diğer sayılara ve kişi bazındaki sayılara katılmaz
         kullanicilar:
           type: array
           items:
