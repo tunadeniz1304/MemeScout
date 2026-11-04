@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { api, checkTestQueryLeakage, clearToken, getToken, setToken } from './services/api'
-import { createEmptyAnnotationContent, validateAnnotationLocally } from './services/contracts'
+import { EXCLUSION_NOTE_MAX, EXCLUSION_REASONS, MEME_STATUS_NAMES, createEmptyAnnotationContent, exclusionReasonName, validateAnnotationLocally } from './services/contracts'
 
 const blankContent = createEmptyAnnotationContent
 const fieldNames = { tur: 'Meme türü', ad: 'Meme adı', kaynak: 'Kaynak', vlm_aciklama: 'Görsel tarif', durum: 'Genel durum', ornek_durumlar: 'Örnek durumlar', uygun_olmayan_durumlar: 'Uygun olmayan durumlar', kulturel_bilgi: 'Kültürel bilgi', anahtar_kelimeler: 'Anahtar kelimeler', duygu: 'Duygu', niyet: 'Niyet', mekanizma: 'Mizah mekanizması', uyari: 'Uyarılar', notlar: 'Notlar' }
@@ -104,6 +105,110 @@ function TestQueries({ user }) {
   return <div className="queries-page"><div className="page-heading"><div><div className="breadcrumbs">Çalışma alanı <span>›</span> Test sorguları</div><h1>Test sorguları</h1><p>Yalnızca senin yazdığın sorgular gösterilir.</p></div></div>{error && <div className="toast error-banner">{error}<button onClick={() => setError('')}>×</button></div>}<div className="query-layout"><form className="form-card query-form" onSubmit={create}><div className="form-top"><div><span className="eyebrow">DEĞERLENDİRME SETİ</span><h2>Yeni sorgu</h2></div><span className="badge private">Sızıntı kontrolü açık</span></div><label className="query-label">Sorgu biçimi<select value={mode} onChange={(event) => setMode(event.target.value)}><option value="durum">Durum</option><option value="tarif">Tarif</option></select></label><label className="query-label">Sorgu metni<textarea rows="4" minLength={5} value={text} onChange={(event) => setText(event.target.value)} placeholder="Arama sisteminin bulmasını istediğin durumu veya memi tarif et…" required /></label><div className="candidate-heading"><strong>Doğru cevap memeleri</strong><span>{selected.length} seçildi</span></div>{!loaded && !error ? <p className="muted tiny">Gold kayıtlar yükleniyor…</p> : <div className="candidate-list">{memes.map((meme) => <label key={meme.id} className={`candidate ${selected.includes(meme.id) ? 'selected' : ''}`}><input type="checkbox" checked={selected.includes(meme.id)} onChange={() => toggleMeme(meme.id)} /><span className="checkmark">{selected.includes(meme.id) ? '✓' : ''}</span><span><strong>{meme.id}</strong><small>{meme.ad || 'Gold kaydı hazır'}</small></span></label>)}{loaded && memes.length === 0 && <p className="muted tiny">Gold kaydı hazır meme bulunamadı.</p>}</div>}<p className="privacy-hint">Seçilen her meme için katkı ve reviewer bilgisi güvenli biçimde ön kontrol edilir. Sunucu sorguyu ayrıca doğrular.</p><div className="form-actions"><span className="save-state">En az 5 karakter · En az 1 cevap</span><button className="button primary" disabled={busy || !loaded}>{busy ? 'Kontrol ediliyor…' : 'Sorguyu kaydet'} <span>→</span></button></div></form><section className="form-card query-list-card"><div className="form-top"><div><span className="eyebrow">KAYITLARIN</span><h2>Oluşturduğun sorgular</h2></div><button className="text-button" onClick={refresh}>Yenile ↻</button></div>{items.length ? <div className="query-list">{items.map((item) => <article className="query-entry" key={item.id}><span className="badge private">{item.mod === 'durum' ? 'Durum' : 'Tarif'}</span><p>{item.metin}</p><small>Doğru cevaplar: {item.dogru_memeler.join(', ')}</small><button className="text-button danger-link" disabled={busy} onClick={() => remove(item.id)}>Sil</button></article>)}</div> : <p className="muted tiny">Henüz oluşturduğun bir sorgu yok.</p>}</section></div></div>
 }
 
+const formatDateTime = (value) => new Date(value).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+/** "Bu mem kullanılmasın" oyu (ADR-0011). Kişi yalnızca kendi oyunu görür; oy etiketlemeyi durdurmaz. */
+function ExclusionVote({ memeId }) {
+  const [vote, setVote] = useState(null)
+  const [loaded, setLoaded] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [reason, setReason] = useState('')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    api.exclusionVote(memeId)
+      .then((result) => { if (active) setVote(result) })
+      .catch((cause) => { if (active && cause.status !== 404) setError(cause.message || 'Oyun yüklenemedi.') })
+      .finally(() => { if (active) setLoaded(true) })
+    return () => { active = false }
+  }, [memeId])
+
+  const openForm = () => { setReason(vote?.sebep || ''); setNote(vote?.not || ''); setError(''); setOpen(true) }
+  const saveVote = async (event) => {
+    event.preventDefault()
+    if (!reason) { setError('Bir sebep seç.'); return }
+    setBusy(true); setError('')
+    try { setVote(await api.putExclusionVote(memeId, { sebep: reason, not: note.trim() || null })); setSaved(true); setOpen(false) }
+    catch (cause) { setError(cause.message || 'Oyun kaydedilemedi.') }
+    finally { setBusy(false) }
+  }
+  const withdraw = async () => {
+    setBusy(true); setError('')
+    try { await api.deleteExclusionVote(memeId); setVote(null); setSaved(false) }
+    catch (cause) { setError(cause.message || 'Oyun geri çekilemedi.') }
+    finally { setBusy(false) }
+  }
+
+  return <div className="exclusion-box">
+    {vote ? <>
+      <div className="exclusion-status"><span className="exclusion-mark">✓</span><div><strong>{saved ? 'Oyun kaydedildi' : 'Bu meme için oyun var'}</strong><small>Bu mem kullanılmasın · {exclusionReasonName(vote.sebep)}{vote.not ? ` · “${vote.not}”` : ''}</small></div></div>
+      {vote.karar === 'kalsin' && <p className="exclusion-decision">Ekip “kalsın” dedi. Oyunu yeniden kaydedersen meme tekrar havuza düşer.</p>}
+      {vote.karar === 'cikarilsin' && <p className="exclusion-decision">Ekip bu memi kullanımdan çıkardı.</p>}
+      <small>Oy etiketlemeyi durdurmaz; istersen bu işi ayrıca atlayabilirsin.</small>
+      {vote.karar !== 'cikarilsin' && <div className="exclusion-actions"><button type="button" className="text-button" disabled={busy} onClick={openForm}>{vote.karar ? 'Yeniden oy ver' : 'Değiştir'}</button><button type="button" className="text-button danger-link" disabled={busy} onClick={withdraw}>Oyu geri çek</button></div>}
+    </> : <>
+      <div><strong>Bu mem veri setine girmemeli mi?</strong><small>Oyunu yalnızca sen ve admin görür. Meme havuza düşer ve ekipçe konuşulur.</small></div>
+      <button type="button" className="button danger small exclusion-button" disabled={!loaded || busy} onClick={openForm}>⚑ Bu mem kullanılmasın</button>
+    </>}
+    {error && !open && <p className="field-error">{error}</p>}
+    {open && createPortal(<div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false) }}><form className="modal" role="dialog" aria-modal="true" aria-labelledby="exclusion-title" onSubmit={saveVote}><button type="button" className="modal-close" aria-label="Kapat" onClick={() => setOpen(false)}>×</button><span className="eyebrow">KULLANILMASIN OYU · {memeId}</span><h2 id="exclusion-title">Bu mem neden kullanılmasın?</h2><p>Tek oy memi havuza düşürür; ekip havuzu toplantıda konuşur, admin kalsın ya da çıkarılsın der. Etiketleme kaldığı yerden sürer.</p><div className="reason-grid" role="radiogroup" aria-label="Sebep">{EXCLUSION_REASONS.map((item) => <label key={item.value} className={`radio-card ${reason === item.value ? 'active' : ''}`}><input type="radio" name="exclusion-reason" checked={reason === item.value} onChange={() => setReason(item.value)} /><span className="radio-dot" /><span>{item.label}</span></label>)}</div><label className="select-label">Not <span className="field-hint">İsteğe bağlı · {note.length}/{EXCLUSION_NOTE_MAX}</span><textarea rows="3" maxLength={EXCLUSION_NOTE_MAX} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Ör. m0412 ile aynı görsel" /></label>{error && <p className="field-error">{error}</p>}<div className="modal-actions"><button type="button" className="button secondary" onClick={() => setOpen(false)}>Vazgeç</button><button className="button primary" disabled={busy || !reason}>{busy ? 'Kaydediliyor…' : 'Oyu kaydet'}</button></div></form></div>, document.body)}
+  </div>
+}
+
+function PoolThumb({ memeId }) {
+  const [url, setUrl] = useState('')
+  useEffect(() => {
+    let active = true
+    let objectUrl = ''
+    api.image(memeId, 'kucuk').then((blob) => { objectUrl = URL.createObjectURL(blob); if (active) setUrl(objectUrl); else URL.revokeObjectURL(objectUrl) }).catch(() => {})
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl) }
+  }, [memeId])
+  return <div className="pool-thumb">{url ? <img src={url} alt={`${memeId} küçük görseli`} /> : <span>{memeId.slice(0, 1).toUpperCase()}</span>}</div>
+}
+
+/** Admin havuzu (ADR-0011): oylar, sebepler ve notlar açıkça görünür; karar admin'dedir. */
+function ExclusionPool() {
+  const [status, setStatus] = useState('bekliyor')
+  const [items, setItems] = useState([])
+  const [notes, setNotes] = useState({})
+  const [loaded, setLoaded] = useState(false)
+  const [busyId, setBusyId] = useState(null)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+
+  const refresh = useCallback(async () => {
+    setError('')
+    try { setItems(await api.exclusionPool(status)); setLoaded(true) }
+    catch (cause) { setError(cause.message || 'Havuz yüklenemedi.') }
+  }, [status])
+
+  useEffect(() => { setLoaded(false); setItems([]); refresh() }, [refresh])
+
+  const decide = async (memeId, karar) => {
+    if (karar === 'cikarilsin' && !window.confirm(`${memeId} kullanımdan çıkarılsın mı? Kuyruklardan, atamalardan, incelemeden ve dışa aktarımdan düşer. “Kalsın” ile geri alınabilir.`)) return
+    setBusyId(memeId); setError(''); setNotice('')
+    try {
+      await api.decideExclusion(memeId, { karar, not: (notes[memeId] || '').trim() || null })
+      setNotes((old) => { const next = { ...old }; delete next[memeId]; return next })
+      setNotice(karar === 'cikarilsin' ? `${memeId} kullanımdan çıkarıldı.` : status === 'cikarildi' ? `${memeId} geri alındı; yeniden kullanımda.` : `${memeId} kalıyor; havuzdan çıktı.`)
+      await refresh()
+    } catch (cause) { setError(cause.message || 'Karar kaydedilemedi.') }
+    finally { setBusyId(null) }
+  }
+
+  const decisionText = (karar) => `${karar.karar === 'kalsin' ? 'Önceki karar: kalsın' : 'Çıkarılsın kararı'} · ${karar.karar_veren?.gorunen_ad || 'admin'} · ${formatDateTime(karar.zaman)}${karar.not ? ` — ${karar.not}` : ''}`
+
+  return <div className="pool-page"><div className="page-heading"><div><div className="breadcrumbs">Yönetim <span>›</span> Kullanılmasın havuzu</div><h1>Kullanılmasın havuzu</h1><p>Etiketleme sırasında “Bu mem kullanılmasın” oyu alan memeler. Ekip konuştuktan sonra karar ver.</p></div><button className="text-button" onClick={refresh}>Yenile ↻</button></div>
+    {error && <div className="toast error-banner">{error}<button onClick={() => setError('')}>×</button></div>}{notice && <div className="toast success-banner">{notice}<button onClick={() => setNotice('')}>×</button></div>}
+    <div className="pool-tabs" role="tablist" aria-label="Havuz görünümü"><button role="tab" aria-selected={status === 'bekliyor'} className={status === 'bekliyor' ? 'active' : ''} onClick={() => setStatus('bekliyor')}>Karar bekleyenler</button><button role="tab" aria-selected={status === 'cikarildi'} className={status === 'cikarildi' ? 'active' : ''} onClick={() => setStatus('cikarildi')}>Çıkarılanlar</button></div>
+    {!loaded ? (!error && <p className="muted tiny">Havuz yükleniyor…</p>) : items.length === 0 ? <div className="pool-empty"><strong>{status === 'bekliyor' ? 'Karar bekleyen meme yok' : 'Çıkarılan meme yok'}</strong><p>{status === 'bekliyor' ? 'Biri etiketlerken “Bu mem kullanılmasın” dediğinde meme burada görünür.' : '“Çıkarılsın” kararı verilen memeler burada listelenir.'}</p></div> : <div className="pool-list">{items.map((item) => <article className="pool-item" key={item.meme_id}><PoolThumb memeId={item.meme_id} /><div className="pool-body"><div className="pool-head"><strong>{item.meme_id}</strong><span className="badge private">{MEME_STATUS_NAMES[item.etiket_durumu] || item.etiket_durumu}</span><span className="pool-count">{item.oy_sayisi} oy</span></div><div className="pool-reasons">{item.sebepler.map((entry) => <span className="pool-chip" key={entry.sebep}>{exclusionReasonName(entry.sebep)} · {entry.sayi}</span>)}</div><ul className="pool-votes">{item.oylar.map((oy) => <li key={`${oy.takma_ad}-${oy.zaman}`}><strong>{oy.takma_ad}</strong><span>{exclusionReasonName(oy.sebep)}</span>{oy.not && <q>{oy.not}</q>}<time dateTime={oy.zaman}>{formatDateTime(oy.zaman)}</time></li>)}</ul>{item.son_karar && <p className="pool-last">{decisionText(item.son_karar)}</p>}<div className="pool-actions"><input aria-label={`${item.meme_id} için karar notu`} value={notes[item.meme_id] || ''} maxLength={1000} onChange={(event) => setNotes((old) => ({ ...old, [item.meme_id]: event.target.value }))} placeholder="Karar notu (isteğe bağlı)" />{status === 'bekliyor' ? <><button className="button secondary small" disabled={busyId !== null} onClick={() => decide(item.meme_id, 'kalsin')}>Kalsın</button><button className="button danger small" disabled={busyId !== null} onClick={() => decide(item.meme_id, 'cikarilsin')}>Çıkarılsın</button></> : <button className="button secondary small" disabled={busyId !== null} onClick={() => decide(item.meme_id, 'kalsin')}>Kalsın · kararı geri al</button>}</div></div></article>)}</div>}
+  </div>
+}
+
 export default function App() {
   const [token, setAuth] = useState(getToken())
   const [user, setUser] = useState(null)
@@ -148,6 +253,14 @@ export default function App() {
     if (first && activeMemeId.current === null) await openAssignment(first)
   }, [])
 
+  // Etiketlenirken havuz kararıyla çıkarılan meme kuyruktan düşer; otomatik kayıt da durur.
+  const leaveExcluded = useCallback((annotationId) => {
+    dirty.current = false; activeMemeId.current = null
+    setQueue((old) => old.filter((item) => item.annotation_id !== annotationId))
+    setCurrent(null); setAnnotation(null); setBusy(false)
+    setError('Bu meme havuz kararıyla kullanımdan çıkarıldı; kuyruğundan kaldırıldı.')
+  }, [])
+
   const openAssignment = useCallback(async (item) => {
     activeMemeId.current = item.meme_id
     activeSeconds.current = 0
@@ -168,9 +281,12 @@ export default function App() {
       if (activeMemeId.current === item.meme_id) setImage(imageObjectUrl)
       else URL.revokeObjectURL(imageObjectUrl)
       api.memeComments(item.meme_id).then((result) => { if (activeMemeId.current === item.meme_id) setComments(result) }).catch(() => { if (activeMemeId.current === item.meme_id) setComments([]) })
-    } catch (cause) { if (activeMemeId.current === item.meme_id) setError(cause.message || 'İş yüklenemedi.') }
-    finally { if (activeMemeId.current === item.meme_id) setBusy(false) }
-  }, [])
+    } catch (cause) {
+      if (activeMemeId.current !== item.meme_id) return
+      if (cause.code === 'MEME_CIKARILDI') leaveExcluded(item.annotation_id)
+      else setError(cause.message || 'İş yüklenemedi.')
+    } finally { if (activeMemeId.current === item.meme_id) setBusy(false) }
+  }, [leaveExcluded])
 
   useEffect(() => { if (token) loadWorkspace().catch((cause) => { setError(cause.message); if (cause.status === 401) { clearToken(); setAuth(null) } }) }, [token, loadWorkspace])
   useEffect(() => () => { if (image) URL.revokeObjectURL(image) }, [image])
@@ -192,11 +308,12 @@ export default function App() {
       if (!quiet) setNotice('Taslağın kaydedildi.')
       return true
     } catch (cause) {
+      if (cause.code === 'MEME_CIKARILDI') { leaveExcluded(current.annotation_id); return true }
       if (cause.code === 'SURUM_CAKISMASI') setError('Bu etiketleme başka bir sekmede açık. Değişikliklerini kaydetmeden önce sekmeleri kontrol et.')
       else setError(cause.message || 'Taslak kaydedilemedi.')
       return false
     }
-  }, [current, annotation, familiarity, confidence])
+  }, [current, annotation, familiarity, confidence, leaveExcluded])
 
   const switchAssignment = useCallback(async (item) => {
     if (dirty.current && !(await save(true))) return
@@ -236,6 +353,7 @@ export default function App() {
     try {
       if (familiarity !== null && familiarity <= 2) { setError('Tanıdıklık puanın 1 veya 2 ise gönderemezsin. Bu işi “Meme aşinalığım düşük” gerekçesiyle atla; yeniden atanır.'); setSkipReason('tanidiklik_dusuk'); setSkipOpen(true); return }
       if (dirty.current && !(await save(true))) return
+      if (activeMemeId.current === null) return
       const localErrors = validateAnnotationLocally(contentRef.current, schema, labels)
       if (localErrors.length) { setErrors(localErrors); setError('Göndermeden önce işaretli alanları tamamla.'); document.querySelector('.has-error')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return }
       const validation = await api.validate(current.annotation_id)
@@ -245,7 +363,10 @@ export default function App() {
       const next = queue.find((item) => item.annotation_id !== current.annotation_id && ['atandi', 'devam_ediyor', 'revizyon_gerekli'].includes(item.durum_kodu))
       if (next) { setQueue((old) => old.filter((item) => item.annotation_id !== current.annotation_id)); await openAssignment(next) }
       else { setCurrent(null); setAnnotation(null); activeMemeId.current = null; setQueue((old) => old.filter((item) => item.annotation_id !== current.annotation_id)) }
-    } catch (cause) { setErrors(cause.fields || []); setError(cause.message || 'Etiket gönderilemedi.') }
+    } catch (cause) {
+      if (cause.code === 'MEME_CIKARILDI') { leaveExcluded(current.annotation_id); return }
+      setErrors(cause.fields || []); setError(cause.message || 'Etiket gönderilemedi.')
+    }
     finally { setBusy(false) }
   }
 
@@ -289,16 +410,16 @@ export default function App() {
   const progressPercent = assignedCount ? Math.min(100, Math.round((completedCount / assignedCount) * 100)) : 0
 
   if (!token) return <Login onLogin={doLogin} onRegister={doRegister} error={error} busy={busy} />
-  return <div className="app-shell"><header className="topbar"><Brand /><nav className="topnav"><button className={view === 'annotation' ? 'nav-active' : ''} onClick={() => setView('annotation')}>Etiketleme</button><button className={view === 'queries' ? 'nav-active' : ''} onClick={() => setView('queries')}>Test sorguları</button></nav><div className="profile"><div className="avatar">{user?.gorunen_ad?.slice(0, 1) || 'A'}</div><span>{user?.gorunen_ad || 'Annotator'}</span><button className="icon-button" title="Çıkış yap" onClick={logout}>↗</button></div></header>
+  return <div className="app-shell"><header className="topbar"><Brand /><nav className="topnav"><button className={view === 'annotation' ? 'nav-active' : ''} onClick={() => setView('annotation')}>Etiketleme</button><button className={view === 'queries' ? 'nav-active' : ''} onClick={() => setView('queries')}>Test sorguları</button>{user?.admin && <button className={view === 'pool' ? 'nav-active' : ''} onClick={() => setView('pool')}>Havuz</button>}</nav><div className="profile"><div className="avatar">{user?.gorunen_ad?.slice(0, 1) || 'A'}</div><span>{user?.gorunen_ad || 'Annotator'}</span><button className="icon-button" title="Çıkış yap" onClick={logout}>↗</button></div></header>
     <main className="workspace"><aside className="sidebar"><div className="side-heading"><div><p className="eyebrow">ÇALIŞMA ALANI</p><h2>Etiketleme</h2></div><span className="queue-count">{queue.length}</span></div><div className="progress-card"><div className="progress-meta"><span>İlerleme</span><strong>{completedCount} / {assignedCount}</strong></div><div className="progress-track"><span style={{ width: `${progressPercent}%` }} /></div><small>{personalProgress ? `${personalProgress.kalan} kalan · ${personalProgress.atlanan} atlanan` : 'İlerleme verisi yüklenemedi.'}</small></div><div className="queue-title"><span>SIRADAKİ İŞLER</span><button className="text-button" onClick={() => loadWorkspace().catch((cause) => setError(cause.message))}>Yenile ↻</button></div><div className="queue-list">{queue.map((item) => <button key={item.annotation_id} className={`queue-item ${current?.annotation_id === item.annotation_id ? 'active' : ''}`} onClick={() => switchAssignment(item)}><span className="queue-thumb" aria-hidden="true"><span>{item.meme_id.slice(0, 1).toUpperCase()}</span></span><span className="queue-info"><strong>{item.meme_id}</strong><small>{item.durum_kodu === 'revizyon_gerekli' ? 'Revizyon gerekli' : item.durum_kodu === 'devam_ediyor' ? 'Devam ediyor' : 'Etiketleme bekliyor'}</small>{item.kalibrasyon && <em>Kalibrasyon</em>}</span><span className="queue-arrow">›</span></button>)}{queue.length === 0 && <p className="empty-queue">Kuyruğunda bekleyen iş yok.</p>}</div><div className="privacy-note"><span>◉</span><p><strong>Kör etiketleme açık</strong><br />Diğer etiketleyicilerin yanıtları gizli tutulur.</p></div></aside>
       <section className="main-panel">{error && <div className="toast error-banner">{error}<button onClick={() => setError('')}>×</button></div>}{notice && <div className="toast success-banner">{notice}<button onClick={() => setNotice('')}>×</button></div>}
-        {view === 'queries' ? <TestQueries user={user} /> : current && annotation ? <><div className="page-heading"><div><div className="breadcrumbs">Çalışma alanı <span>›</span> Etiketleme <span>›</span> <strong>{current.meme_id}</strong></div><h1>Memi etiketle</h1><p>Görseli incele ve aşağıdaki alanları kendi yorumuna göre doldur.</p></div><div className="heading-badges">{current.cift_etiket && <span className="badge private">◉ Kör etiketleme</span>}{current.kalibrasyon && <span className="badge calibration">✦ Kalibrasyon turu</span>}</div></div>
-          <div className="label-layout"><section className="image-card"><div className="image-card-head"><div><span className="eyebrow">MEME GÖRSELİ</span><strong>{current.meme_id}</strong></div><button className="icon-button" title="Görseli büyüt" onClick={() => setZoomOpen(true)}>⌕</button></div><button type="button" className="meme-image" onClick={() => setZoomOpen(true)} aria-label="Görseli büyüt">{image ? <img src={image} alt={`Etiketlenecek meme: ${current.meme_id}`} /> : <div className="image-loading">Görsel yükleniyor…</div>}</button><div className="image-caption"><span className="image-dot" />Büyütmek için görsele tıkla</div><div className="image-stats"><div><span>ETİKETLEME</span><strong>{current.cift_etiket ? 'Çift etiket' : 'Tek etiket'}</strong></div><div><span>DURUM</span><strong>{annotation.durum_kodu === 'revizyon_gerekli' ? 'Revizyon' : 'Devam ediyor'}</strong></div></div></section>
+        {view === 'queries' ? <TestQueries user={user} /> : view === 'pool' && user?.admin ? <ExclusionPool /> : current && annotation ? <><div className="page-heading"><div><div className="breadcrumbs">Çalışma alanı <span>›</span> Etiketleme <span>›</span> <strong>{current.meme_id}</strong></div><h1>Memi etiketle</h1><p>Görseli incele ve aşağıdaki alanları kendi yorumuna göre doldur.</p></div><div className="heading-badges">{current.cift_etiket && <span className="badge private">◉ Kör etiketleme</span>}{current.kalibrasyon && <span className="badge calibration">✦ Kalibrasyon turu</span>}</div></div>
+          <div className="label-layout"><section className="image-card"><div className="image-card-head"><div><span className="eyebrow">MEME GÖRSELİ</span><strong>{current.meme_id}</strong></div><button className="icon-button" title="Görseli büyüt" onClick={() => setZoomOpen(true)}>⌕</button></div><button type="button" className="meme-image" onClick={() => setZoomOpen(true)} aria-label="Görseli büyüt">{image ? <img src={image} alt={`Etiketlenecek meme: ${current.meme_id}`} /> : <div className="image-loading">Görsel yükleniyor…</div>}</button><div className="image-caption"><span className="image-dot" />Büyütmek için görsele tıkla</div><div className="image-stats"><div><span>ETİKETLEME</span><strong>{current.cift_etiket ? 'Çift etiket' : 'Tek etiket'}</strong></div><div><span>DURUM</span><strong>{annotation.durum_kodu === 'revizyon_gerekli' ? 'Revizyon' : 'Devam ediyor'}</strong></div></div><ExclusionVote key={current.meme_id} memeId={current.meme_id} /></section>
             <section className="form-card"><div className="form-top"><div><span className="eyebrow">ANNOTATION FORMU</span><h2>İçerik etiketleri</h2></div><span className="completion-pill">{completeCount} alan dolduruldu</span></div>{current.kalibrasyon && <div className="calibration-callout"><span>✦</span><div><strong>Kalibrasyon görevi</strong><p>Bu annotation kalibrasyon turuna aittir ve uyum ölçümüne katılmaz.</p></div></div>}{annotation.revizyon_notu && <div className="revision-callout"><strong>Revizyon notu</strong><p>{annotation.revizyon_notu}</p></div>}{annotation.on_doldurma === 'ai_taslagi' && <div className="draft-callout"><span>✎</span><div><strong>Form bir AI taslağıyla dolu geldi</strong><p>Her alanı kendi bilginle kontrol et ve düzelt. Taslak doğrudan gold olmaz; kurallara uymayan alanlar gönderirken işaretlenir.</p></div></div>}{annotation.on_doldurma === 'vlm_taslagi' && <div className="draft-callout"><span>✎</span><div><strong>Görsel tarif VLM taslağıyla dolu geldi</strong><p>Tarifi görsele bakarak kontrol et; anlam alanlarını sen doldur.</p></div></div>}<div className="familiarity-block"><div><strong>Meme'e tanıdıklık</strong><small>1–2 puan veriyorsan gönderemezsin; görev yeniden atanmak üzere atlanır.</small></div><select aria-label="Meme'e tanıdıklık puanı" value={familiarity ?? ''} onChange={(event) => { setFamiliarity(event.target.value ? Number(event.target.value) : null); dirty.current = true }}><option value="">Puan seç</option><option value="1">1 · Hiç görmedim</option><option value="2">2 · Gördüm, anlamını bilmiyorum</option><option value="3">3 · Anlamını biliyorum</option><option value="4">4 · Biliyorum, ara sıra kullanırım</option><option value="5">5 · Çok iyi tanıyorum</option></select></div><div className="blind-note"><span>◉</span><span><strong>Bağımsız değerlendir</strong><small>{current.cift_etiket ? 'Diğer annotator’ın etiketleri ve yorumları bu görev tamamlanana kadar gizlidir.' : 'Bu görevde başka annotator verisi gösterilmez.'}</small></span><span className="lock">KİLİTLİ</span></div>
               <div className="fields">{orderedFields.map((name) => <Field key={name} name={name} rule={rules[name] || {}} content={content} update={update} labels={labels} errors={errors} confidence={confidence} updateConfidence={updateConfidence} />)}</div>
               <section className="comments-panel"><div className="comments-heading"><div><strong>Yorumlar ve işaretler</strong><small>{current.cift_etiket ? 'Yorum görünürlüğü kör etiketleme kuralına göre sunucu tarafından filtrelenir.' : 'Bu meme hakkındaki ekip notları.'}</small></div><span>{comments.length}</span></div>{comments.filter((comment) => !current.cift_etiket || ['gonderildi', 'onaylandi'].includes(annotation.durum_kodu) || comment.yazan?.id === user?.id).map((comment) => <article className="comment-item" key={comment.id}><div><strong>{comment.yazan?.gorunen_ad}</strong><span>{comment.tur.replaceAll('_', ' ')}</span></div><p>{comment.metin}</p></article>)}<form className="comment-form" onSubmit={addComment}><select aria-label="Yorum türü" value={commentType} onChange={(event) => setCommentType(event.target.value)}><option value="soru">Soru</option><option value="kilavuz_onerisi">Kılavuz önerisi</option><option value="kopya_suphesi">Kopya şüphesi</option><option value="hata">Hata</option></select><input value={commentText} onChange={(event) => setCommentText(event.target.value)} placeholder="Ekip için not veya soru ekle…" /><button className="button secondary small" disabled={!commentText.trim()}>Ekle</button></form></section>
               <p className="keyboard-help">Kısayollar: Ctrl/Cmd + S kaydet · Ctrl/Cmd + Enter gönder · Alt + → sonraki iş</p><div className="form-actions"><button type="button" className="button secondary" onClick={() => { if (familiarity !== null && familiarity <= 2) setSkipReason('tanidiklik_dusuk'); setSkipOpen(true) }}>Bu işi atla</button><div className="action-right"><span className="save-state">{savedAt ? `Kaydedildi ${savedAt.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}` : dirty.current ? 'Kaydedilmemiş değişiklikler' : 'Otomatik kayıt açık'}</span><button type="button" className="button secondary" disabled={busy} onClick={() => save(false)}>Taslağı kaydet</button><button type="button" className="button primary" disabled={busy} onClick={submit}>{familiarity !== null && familiarity <= 2 ? 'Düşük tanıdıklık · Atla' : busy ? 'İşleniyor…' : 'Etiketi gönder'} <span>→</span></button></div></div>
-            </section></div></> : <div className="empty-state"><div className="empty-illustration">✓</div><h1>Hepsi tamamlandı</h1><p>Şu anda etiketlenecek başka işin yok. Yeni görevler geldiğinde burada görünecek.</p><button className="button secondary" onClick={() => loadWorkspace().catch((cause) => setError(cause.message))}>Kuyruğu yenile ↻</button></div>}
+            </section></div></> : queue.length ? <div className="empty-state"><div className="empty-illustration">→</div><h1>Sıradaki işe geç</h1><p>Kuyruğunda {queue.length} iş var. Soldaki listeden birini seç ya da sıradakini aç.</p><button className="button primary" disabled={busy} onClick={() => switchAssignment(queue[0])}>Sıradaki işi aç <span>→</span></button></div> : <div className="empty-state"><div className="empty-illustration">✓</div><h1>Hepsi tamamlandı</h1><p>Şu anda etiketlenecek başka işin yok. Yeni görevler geldiğinde burada görünecek.</p><button className="button secondary" onClick={() => loadWorkspace().catch((cause) => setError(cause.message))}>Kuyruğu yenile ↻</button></div>}
       </section>
     </main>{skipOpen && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSkipOpen(false) }}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="skip-title"><button className="modal-close" onClick={() => setSkipOpen(false)}>×</button><span className="eyebrow">İŞİ ATLA</span><h2 id="skip-title">Bu memi neden atlıyorsun?</h2><p>Atlanan işler yeniden atama kuyruğuna alınır.</p><label className="select-label">Atlama nedeni<select value={skipReason} onChange={(event) => setSkipReason(event.target.value)}><option value="tanimiyorum">Memi tanımıyorum</option><option value="tanidiklik_dusuk">Meme aşinalığım düşük</option><option value="uygun_degil">Uygun değil</option><option value="diger">Diğer</option></select></label><label className="select-label">Açıklama <textarea rows="3" value={skipDescription} onChange={(event) => setSkipDescription(event.target.value)} placeholder="İsteğe bağlı kısa açıklama" /></label><div className="modal-actions"><button className="button secondary" onClick={() => setSkipOpen(false)}>Vazgeç</button><button className="button primary" disabled={busy} onClick={doSkip}>İşi atla</button></div></section></div>}</div>
 }

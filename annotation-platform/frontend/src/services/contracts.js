@@ -6,12 +6,28 @@ export const TEST_QUERY_MODES = Object.freeze(['durum', 'tarif'])
 export const LABEL_FIELDS = Object.freeze(['duygu', 'niyet', 'mekanizma', 'uyari'])
 export const EXPORT_FILES = Object.freeze(['gold.jsonl', 'annotations_raw.jsonl', 'test_set.jsonl'])
 export const CONFIDENCE_VALUES = Object.freeze([1, 2, 3])
+/** "Bu mem kullanılmasın" oyunun sebepleri (ExclusionReason, ADR-0011) ve notun üst sınırı. */
+export const EXCLUSION_REASONS = Object.freeze([
+  { value: 'kalitesiz_gorsel', label: 'Kalitesiz görsel' },
+  { value: 'mem_degil', label: 'Mem değil' },
+  { value: 'anlasilmaz', label: 'Anlaşılmaz' },
+  { value: 'uygunsuz', label: 'Uygunsuz / rahatsız edici' },
+  { value: 'kopya', label: 'Kopya' },
+  { value: 'diger', label: 'Diğer' },
+])
+export const EXCLUSION_NOTE_MAX = 300
+export const exclusionReasonName = (value) => EXCLUSION_REASONS.find((reason) => reason.value === value)?.label || value
+/** Meme'in genel durumu (MemeLabelStatus); `cikarildi` havuz kararıyla gelir. */
+export const MEME_STATUS_NAMES = Object.freeze({ atanmadi: 'Atanmadı', etiketleniyor: 'Etiketleniyor', inceleme_bekliyor: 'İnceleme bekliyor', gold_hazir: 'Gold hazır', yeniden_kontrol: 'Yeniden kontrol', cikarildi: 'Çıkarıldı' })
 
 /** @typedef {{alan:string, kural:string, mesaj:string}} FieldError (OpenAPI FieldError) */
 /** @typedef {{gecerli:boolean, hatalar:FieldError[]}} ValidationResult */
 /** @typedef {{surum:number, icerik?:Object, tanidiklik?:number, alan_guveni?:Record<string, 1|2|3>, aktif_sure_artis_sn?:number}} AnnotationDraft */
 /** @typedef {{gerekce:'tanimiyorum'|'tanidiklik_dusuk'|'uygun_degil'|'diger', aciklama?:string|null, tanidiklik?:number}} SkipRequest */
 /** @typedef {{metin:string, mod:'durum'|'tarif', dogru_memeler:string[]}} TestQueryCreate */
+/** @typedef {{sebep:string, not?:string|null}} ExclusionVoteRequest */
+/** @typedef {{meme_id:string, sebep:string, not:string|null, zaman:string, karar:'kalsin'|'cikarilsin'|null}} ExclusionVote */
+/** @typedef {{karar:'kalsin'|'cikarilsin', not?:string|null}} ExclusionDecisionRequest */
 /** @typedef {{icerik:Object, kaynak_annotationlar:string[], cozum_notu?:string|null}} GoldCreate */
 /** @typedef {{meme_ids:string[], annotator_id:string, cift_etiket?:boolean, kalibrasyon?:boolean}} AssignmentCreate */
 /** @typedef {{id:string, gorsel_url:string, kucuk_gorsel_url:string, sha256:string, etiket_durumu:string, annotatorlar:Object[], cift_etiket?:boolean, gold_var:boolean}} Meme */
