@@ -6,10 +6,10 @@ export const TEST_QUERY_MODES = Object.freeze(['durum', 'tarif'])
 export const LABEL_FIELDS = Object.freeze(['duygu', 'niyet', 'mekanizma', 'uyari'])
 export const EXPORT_FILES = Object.freeze(['gold.jsonl', 'annotations_raw.jsonl', 'test_set.jsonl'])
 export const CONFIDENCE_VALUES = Object.freeze([1, 2, 3])
-/** "Bu mem kullanılmasın" oyunun sebepleri (ExclusionReason, ADR-0011) ve notun üst sınırı. */
+/** "Bu meme kullanılmasın" oyunun sebepleri (ExclusionReason, ADR-0011) ve notun üst sınırı. */
 export const EXCLUSION_REASONS = Object.freeze([
   { value: 'kalitesiz_gorsel', label: 'Kalitesiz görsel' },
-  { value: 'mem_degil', label: 'Mem değil' },
+  { value: 'mem_degil', label: 'Meme değil' },
   { value: 'anlasilmaz', label: 'Anlaşılmaz' },
   { value: 'uygunsuz', label: 'Uygunsuz / rahatsız edici' },
   { value: 'kopya', label: 'Kopya' },

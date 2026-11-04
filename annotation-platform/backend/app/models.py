@@ -141,7 +141,7 @@ class MemeExclusionDecision(SQLModel, table=True):
     zaman: datetime = Field(default_factory=simdi)
 
 class MemeExclusionVote(SQLModel, table=True):
-    # "Bu mem kullanılmasın" oyu (ADR-0011); kişi başına meme başına bir oy.
+    # "Bu meme kullanılmasın" oyu (ADR-0011); kişi başına meme başına bir oy.
     __tablename__ = "meme_exclusion_vote"
 
     meme_id: str = Field(primary_key=True, foreign_key="meme.id")

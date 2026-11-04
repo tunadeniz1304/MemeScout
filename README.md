@@ -58,7 +58,7 @@ This project is developed as part of the **SENG 429** course.
 - [x] Blind double labeling, review and gold records
 - [x] Leakage check for test queries
 - [x] Agreement and progress dashboards (API), audit log and JSONL export
-- [x] "Bu mem kullanılmasın" vote and an admin pool to keep or exclude flagged memes
+- [x] "Bu meme kullanılmasın" vote and an admin pool to keep or exclude flagged memes
 
 **Evaluation** (planned)
 

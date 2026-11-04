@@ -159,7 +159,7 @@ Değerlendirme seti (~100 sorgu) de platformda tutulur.
 
 **Sızıntı kuralı ([ADR-0002](adr/0002-sizinti-kurali-reviewer-dahil.md)):** Test sorgusunu yazan kişi, doğru cevap olarak gösterdiği meme'lerin gold kaydına katkı veren hiç kimse olamaz: kaynak annotation'ların sahipleri ve reviewer. Platform ihlalde `422 SIZINTI` döner ve sorunlu meme'leri listeler. Aynı `parafraz_grubu`'ndaki varyantlar için de kural aynıdır. Mümkünse sorguları ekip dışından biri yazar; bu, kuraldan daha güçlü bir korumadır.
 
-**Test seti ([ADR-0012](adr/0012-test-seti-ayri-kume.md)):** Admin seçtiği meme'leri test setine alır. Bu meme'ler etiketleme atamalarına girmez ve herkes onlara test sorgusu yazar. "Test sorguları" sayfası her fotoğrafı gösterir; altına, aratınca o memin çıkması gereken cümleler yazılır. Kural ters yönde de geçerlidir: bir meme'e test sorgusu yazan kişi o meme'e annotator olarak atanamaz ve reviewer'ı olamaz. Ekip dışında toplanan sorgular admin tarafından yazarları adına eklenir.
+**Test seti ([ADR-0012](adr/0012-test-seti-ayri-kume.md)):** Admin seçtiği meme'leri test setine alır. Bu meme'ler etiketleme atamalarına girmez ve herkes onlara test sorgusu yazar. "Test sorguları" sayfası her fotoğrafı gösterir; altına, aratınca o meme'in çıkması gereken cümleler yazılır. Kural ters yönde de geçerlidir: bir meme'e test sorgusu yazan kişi o meme'e annotator olarak atanamaz ve reviewer'ı olamaz. Ekip dışında toplanan sorgular admin tarafından yazarları adına eklenir.
 
 ### 3.8 Denetim kaydı
 
@@ -191,7 +191,7 @@ Veri setine girmemesi gereken meme'ler (kalitesiz görsel, aslında meme olmayan
 | Alan | Açıklama |
 | --- | --- |
 | `meme`, `kullanici` | Hangi meme'e kimin oyu |
-| `sebep` | `kalitesiz_gorsel` (Kalitesiz görsel), `mem_degil` (Mem değil), `anlasilmaz` (Anlaşılmaz), `uygunsuz` (Uygunsuz / rahatsız edici), `kopya` (Kopya), `diger` (Diğer) |
+| `sebep` | `kalitesiz_gorsel` (Kalitesiz görsel), `mem_degil` (Meme değil), `anlasilmaz` (Anlaşılmaz), `uygunsuz` (Uygunsuz / rahatsız edici), `kopya` (Kopya), `diger` (Diğer) |
 | `not` | İsteğe bağlı, en fazla 300 karakter |
 | `zaman` | Oyun verildiği ya da son güncellendiği an |
 
@@ -217,11 +217,11 @@ Kurallar:
 
 1. **Kılavuz:** Etiket tanımları ve örneklerle etiketleme kılavuzu yazılır.
 2. **Kalibrasyon turu:** 4 kişinin hepsi aynı 10–15 meme'i etiketler. Sonuçlar birlikte tartışılır ve kılavuz güncellenir. Bu turun etiketleri `kalibrasyon` ile işaretlenir ve uyum ölçümüne katılmaz.
-3. **Ana etiketleme:** 300 meme 4 kişiye bölünür, kişi başı ~75 meme. AI taslağı olan tek etiketli meme'lerde form taslakla dolu gelir (§3.9). Kullanılmaması gereken bir meme görülürse "Bu mem kullanılmasın" oyu verilir; havuz ekip toplantısında konuşulur (§3.10).
+3. **Ana etiketleme:** 300 meme 4 kişiye bölünür, kişi başı ~75 meme. AI taslağı olan tek etiketli meme'lerde form taslakla dolu gelir (§3.9). Kullanılmaması gereken bir meme görülürse "Bu meme kullanılmasın" oyu verilir; havuz ekip toplantısında konuşulur (§3.10).
 4. **Çift etiketleme:** Meme'lerin ~%20'si (~60 meme) ikinci bir kişiye de atanır. 4 kişiden 6 farklı ikili çıkar, her ikiliye ~10 meme düşer. Böylece uyum, kişiden bağımsız ölçülür. İlk yarısı (~30 meme) bittiğinde ara uyum ölçümü yapılır (§6). Bunlara ek olarak tanıdıklık 3 ile gönderilen tek etiketli meme'ler de ikinci bir kişiye gider (§3.3).
 5. **Uyum ölçümü ve çözüm:** Anlaşmazlıkları üçüncü bir kişi (reviewer) çözer.
 6. **İkinci bakış:** Tek etiketlenen meme'leri, onları etiketlemeyen bir reviewer hızlıca kontrol eder; onaylar ya da `revizyon_notu` ile geri gönderir ([ADR-0009](adr/0009-tek-etiketli-memelerde-ikinci-bakis.md)). Bu kontrol uyum ölçümüne katılmaz.
-7. **Test seti:** ~100 meme test setine ayrılır ve etiketleme atamalarına girmez ([ADR-0012](adr/0012-test-seti-ayri-kume.md)). Herkes bu fotoğrafların her birine, aratınca o memin çıkması gereken 2-3 cümle yazar; en az biri tarif olur. Sızıntı kuralı geçerlidir. Bunlardan 20'si için 2'şer parafraz varyantı eklenir (§3.7, `parafraz_grubu`).
+7. **Test seti:** ~100 meme test setine ayrılır ve etiketleme atamalarına girmez ([ADR-0012](adr/0012-test-seti-ayri-kume.md)). Herkes bu fotoğrafların her birine, aratınca o meme'in çıkması gereken 2-3 cümle yazar; en az biri tarif olur. Sızıntı kuralı geçerlidir. Bunlardan 20'si için 2'şer parafraz varyantı eklenir (§3.7, `parafraz_grubu`).
 8. **Dışa aktarım:** Gold kayıtlar arama sistemine aktarılır.
 
 ### 4.2 Annotation durumları
@@ -260,7 +260,7 @@ Kural yorumları da kapsar ([ADR-0003](adr/0003-kor-etiketlemede-yorumlar-gizli.
 - Doğrulama kuralları ihlal edilirse gönderme engellenir ve sebebi gösterilir
 - Göndermeden önce eksikleri gösteren "Doğrula" butonu
 - Uyarı etiketlerinin yanında ayrı bir "Uyarı yok" onay kutusu
-- "Bu mem kullanılmasın" oyu: sebep listesi ve isteğe bağlı not; kişi kendi oyunu görür, değiştirir ya da geri çeker
+- "Bu meme kullanılmasın" oyu: sebep listesi ve isteğe bağlı not; kişi kendi oyunu görür, değiştirir ya da geri çeker
 
 **Yönetim ve takip**
 - İlerleme panosu: kişi başı tamamlanan, kalan, atlanan, ortalama süre
