@@ -2043,7 +2043,7 @@ components:
     ExclusionReason:
       type: string
       description: |
-        kalitesiz_gorsel = Kalitesiz görsel, mem_degil = Mem değil, anlasilmaz = Anlaşılmaz,
+        kalitesiz_gorsel = Kalitesiz görsel, mem_degil = Meme değil, anlasilmaz = Anlaşılmaz,
         uygunsuz = Uygunsuz / rahatsız edici, kopya = Kopya, diger = Diğer
       enum: [kalitesiz_gorsel, mem_degil, anlasilmaz, uygunsuz, kopya, diger]
 

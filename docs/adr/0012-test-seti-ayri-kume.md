@@ -6,7 +6,7 @@
 
 ## Bağlam
 
-Ekip, değerlendirme seti için aynı fotoğrafları görüp her birine "bunu aratınca bu mem çıkmalı" dediği cümleler yazmak istiyor. ADR-0002'ye göre bir meme'in gold kaydına katkı veren kişi onun test sorgusunu yazamaz. 4 kişilik ekipte herkes etiketlemeye de katıldığı için her meme'e yalnızca 1-2 kişi sorgu yazabiliyor.
+Ekip, değerlendirme seti için aynı fotoğrafları görüp her birine "bunu aratınca bu meme çıkmalı" dediği cümleler yazmak istiyor. ADR-0002'ye göre bir meme'in gold kaydına katkı veren kişi onun test sorgusunu yazamaz. 4 kişilik ekipte herkes etiketlemeye de katıldığı için her meme'e yalnızca 1-2 kişi sorgu yazabiliyor.
 
 Kural ayrıca yalnızca sorgu yazılırken denetleniyor. Önce sorgu yazan kişi sonra o meme'e atanırsa örnek durumlara kendi test cümlelerini yazabilir ve sonuçlar olduğundan iyi görünür.
 

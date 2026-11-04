@@ -17,7 +17,7 @@ export class ApiError extends Error {
     this.details = contractError?.detay || {}
     if (this.code === 'SURUM_CAKISMASI') this.message = 'Bu annotation başka bir sekmede güncellendi. Sayfayı yenileyip son taslağı yükle.'
     if (this.code === 'TANIDIKLIK_DUSUK') this.message = 'Tanıdıklık 1 veya 2 olduğu için bu annotation gönderilemez; atlanıp yeniden atanmalı.'
-    if (this.code === 'REVIEWER_ANNOTATOR_OLAMAZ') this.message = 'Memi etiketleyen kişi bu meme için reviewer olamaz.'
+    if (this.code === 'REVIEWER_ANNOTATOR_OLAMAZ') this.message = 'Meme’i etiketleyen kişi bu meme için reviewer olamaz.'
     if (this.code === 'KOPYA') this.message = `Aynı görsel daha önce yüklenmiş${this.details.mevcut_meme_id ? ` (${this.details.mevcut_meme_id})` : ''}.`
     if (this.code === 'SIZINTI') {
       const memes = this.details.ihlal_eden_memeler || []
@@ -96,7 +96,7 @@ export const api = {
   comments: (filters = {}) => request(`/comments${queryString({ cozuldu: filters.cozuldu, tur: filters.tur, sayfa: filters.sayfa, boyut: filters.boyut })}`),
   updateComment: (commentId, cozuldu) => request(`/comments/${idPath(commentId)}`, json('PATCH', { cozuldu })),
 
-  // "Bu mem kullanılmasın" oyu (ADR-0011): kişi yalnızca kendi oyunu görür. Oy yoksa GET 404 döner.
+  // "Bu meme kullanılmasın" oyu (ADR-0011): kişi yalnızca kendi oyunu görür. Oy yoksa GET 404 döner.
   exclusionVote: (memeId) => request(`/memes/${idPath(memeId)}/exclusion-vote`),
   putExclusionVote: (memeId, vote) => request(`/memes/${idPath(memeId)}/exclusion-vote`, json('PUT', vote)),
   deleteExclusionVote: (memeId) => request(`/memes/${idPath(memeId)}/exclusion-vote`, { method: 'DELETE' }),
@@ -155,8 +155,8 @@ export async function checkTestQueryLeakage(authorId, memeIds) {
     let gold
     try { [meme, gold] = await Promise.all([api.meme(memeId), api.gold(memeId)]) }
     catch (cause) {
-      if (cause.status === 403) throw new Error(`${memeId}: katkı bilgisi kör etiketleme nedeniyle doğrulanamadı. Bu memi sorguya ekleme.`)
-      if (cause.status === 404) throw new Error(`${memeId}: gold kaydı bulunamadı. Yalnızca doğrulanmış gold memeleri seç.`)
+      if (cause.status === 403) throw new Error(`${memeId}: katkı bilgisi kör etiketleme nedeniyle doğrulanamadı. Bu meme'i sorguya ekleme.`)
+      if (cause.status === 404) throw new Error(`${memeId}: gold kaydı bulunamadı. Yalnızca doğrulanmış gold meme'leri seç.`)
       throw cause
     }
     const ownIds = new Set((meme.annotasyonlar || []).filter((item) => item.annotator?.id === authorId).map((item) => item.id))

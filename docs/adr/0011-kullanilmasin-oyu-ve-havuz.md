@@ -10,7 +10,7 @@ Toplanan meme'lerin bir kısmı veri setine girmemeli: görseli kalitesiz olanla
 
 ## Karar
 
-- Etiketleme ekranında her kişi bir meme için "Bu mem kullanılmasın" oyu verebilir. Oyda sabit bir listeden sebep (kalitesiz görsel, mem değil, anlaşılmaz, uygunsuz / rahatsız edici, kopya, diğer) ve isteğe bağlı, en fazla 300 karakterlik not bulunur. Kişi başına meme başına tek oy vardır; oy güncellenebilir ve geri çekilebilir.
+- Etiketleme ekranında her kişi bir meme için "Bu meme kullanılmasın" oyu verebilir. Oyda sabit bir listeden sebep (kalitesiz görsel, meme değil, anlaşılmaz, uygunsuz / rahatsız edici, kopya, diğer) ve isteğe bağlı, en fazla 300 karakterlik not bulunur. Kişi başına meme başına tek oy vardır; oy güncellenebilir ve geri çekilebilir.
 - Oy etiketlemeyi durdurmaz; annotation'ın durumu değişmez. Oy veren isterse işi ayrıca atlar.
 - Tek oy meme'i havuza düşürür. Havuz sayfası admin'e açıktır; oy sayısı, sebepler, notlar ve oy verenlerin takma adları görünür.
 - Ekip havuzu toplantıda konuşur; admin her meme için "kalsın" ya da "çıkarılsın" der.
