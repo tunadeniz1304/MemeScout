@@ -640,6 +640,8 @@ paths:
         Atlanan veya tanıdıklığı düşük annotation için meme'i başka birine atar.
         Eski annotation `atlandi` olarak kalır, yeni kişi için yeni annotation oluşur.
         Meme'e test sorgusu yazmış kişiye atanamaz (`hata.kod = SIZINTI`; ADR-0012).
+        Ana turdaki atlama zaten otomatik yeniden atanır (ADR-0013); bu uç kalibrasyon turundaki
+        atlamalar ve admin'in elle müdahalesi içindir. Otomatik atanmış annotation 409 döner.
       requestBody:
         required: true
         content:
@@ -776,6 +778,11 @@ paths:
         `POST /reviews/{meme_id}/gold` ile oluşur.
         `tanidiklik` 1 veya 2 ise 422 `TANIDIKLIK_DUSUK` döner. Etiket listesi ve şema versiyonu
         gönderim anında yeniden sabitlenir, çünkü içerik o anki listeye göre doğrulanır.
+        İlk gönderimde (`devam_ediyor` → `gonderildi`) `tanidiklik` 3 ise tek etiketli meme'e
+        sıradaki uygun kişi de atanır ve meme çift etiketli olur; reviewer iki etiketi birleştirir
+        (ADR-0013). Uygun kişi, `POST /annotations/{annotation_id}/skip`'teki kuralla seçilir.
+        AI taslaklı meme ve kalibrasyon annotation'ı bunun dışındadır; uygun kimse yoksa meme tek
+        etiketli kalır.
       requestBody:
         required: true
         content:
@@ -803,7 +810,16 @@ paths:
     post:
       tags: [annotations]
       summary: Atla
-      description: Annotation `atlandi` olur ve admin'in yeniden atama listesine düşer.
+      description: |
+        Annotation `atlandi` olur. Ana turdaki meme sıradaki uygun kişiye otomatik atanır
+        (ADR-0013): ana turda işi olan, bu meme'e atanmamış (atlamış da sayılır) ve ona test
+        sorgusu yazmamış kişilerden açık işi en az olan; eşitlikte toplam işi az olan. Eski
+        annotation yenisine bağlanır.
+        Uygun kimse kalmazsa: meme'in başka annotator'ı da yoksa son atlayan kişi adına `diger`
+        sebepli kullanılmasın oyu verilir ve meme havuza düşer (ADR-0011). Çift etiketli meme'de bir
+        annotator kaldıysa meme onunla tek etiketli sürer ve tek etiketli meme gibi incelenir.
+        Test setindeki, gold kaydı olan ya da havuz kararıyla çıkarılan meme'de otomatik atama
+        yapılmaz. Kalibrasyon turundaki atlama admin'in yeniden atama listesine düşer.
       requestBody:
         required: true
         content:

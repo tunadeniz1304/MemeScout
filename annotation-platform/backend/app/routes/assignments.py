@@ -1,3 +1,4 @@
+from collections import Counter
 from itertools import combinations
 from typing import Optional
 
@@ -6,11 +7,12 @@ from sqlmodel import Session, select
 
 from app import cikti
 from app.database import get_session
-from app.denetim import ANNOTATION, GUNCELLEME, OLUSTURMA, denetle
+from app.denetim import ANNOTATION, GUNCELLEME, MEME, OLUSTURMA, denetle
 from app.errors import ApiHatasi
 from app.havuz import cikarilmamis_olmali, cikarilmis_memeler
-from app.kurallar import aktif_mi, cift_etiket_mi, grubu, test_sorgusu_yazarlari
-from app.models import ATLANDI, AiDraft, Annotation, GoldRecord, Meme, User
+from app.kurallar import BEKLEYEN_DURUMLAR, aktif_mi, cift_etiket_mi, grubu, test_sorgusu_yazarlari
+from app.models import ATLANDI, AiDraft, Annotation, GoldRecord, Meme, MemeExclusionVote, User, simdi
+from app.routes.exclusions import OY_ALANI, meme_kilitle, oy_degeri
 from app.schemas import (
     AnnotationSummaryOut,
     AssignmentCreate,
@@ -286,3 +288,100 @@ def yeniden_ata(
     denetle(session, yonetici.id, ANNOTATION, eski.id, GUNCELLEME, alan="yerine_gecen_id", eski=None, yeni=yeni.id)
     session.commit()
     return cikti.annotation_ozeti(yeni, cikti.kullanicilar(session))
+
+
+# ------------------------------------------------------------------ otomatik atama (ADR-0013)
+
+# Atlanan meme'e atanabilecek kimse kalmayınca son atlayan kişi adına verilen kullanılmasın oyunun notu
+KIMSE_KALMADI_NOTU = "Otomatik: meme'i atlayanlar dışında atanabilecek kimse kalmadı."
+
+
+def siradaki_annotator(session: Session, meme_id: str) -> Optional[str]:
+    """Meme'i alacak kişi: ana turda işi olan, bu meme'e atanmamış (atlamış da sayılır) ve ona test
+    sorgusu yazmamış kişilerden açık işi en az olan; eşitlikte toplam işi az olan, sonra id sırası."""
+    satirlar = session.exec(
+        select(Annotation.annotator_id, Annotation.meme_id, Annotation.durum_kodu, Annotation.kalibrasyon)
+    ).all()
+    # Ana turda hiç işi olmayan hesap (ör. deneme hesabı) aday olmaz.
+    adaylar = {satir.annotator_id for satir in satirlar if not satir.kalibrasyon}
+    adaylar -= {satir.annotator_id for satir in satirlar if satir.meme_id == meme_id and not satir.kalibrasyon}
+    adaylar -= test_sorgusu_yazarlari(session, [meme_id])[meme_id]
+    if not adaylar:
+        return None
+    acik = Counter(satir.annotator_id for satir in satirlar if satir.durum_kodu in BEKLEYEN_DURUMLAR)
+    toplam = Counter(satir.annotator_id for satir in satirlar)
+    return min(sorted(adaylar), key=lambda kisi_id: (acik[kisi_id], toplam[kisi_id]))
+
+
+def otomatik_atanabilir_mi(session: Session, meme_id: str) -> bool:
+    # Meme kilitlenir: aynı meme'de aynı anda atlayan iki kişi aynı yeni kişiyi seçmesin.
+    meme = meme_kilitle(session, meme_id)
+    return not meme.test_seti and session.get(GoldRecord, meme_id) is None and not cikarilmis_memeler(session, [meme_id])
+
+
+def havuza_dusur(session: Session, meme_id: str, kullanici: User) -> None:
+    """Son atlayan kişi adına kullanılmasın oyu verilir; meme admin'in havuzuna düşer (ADR-0011)."""
+    yeni = {"sebep": "diger", "not": KIMSE_KALMADI_NOTU, "karar": None}
+    oy = session.get(MemeExclusionVote, (meme_id, kullanici.id))
+    if oy is None:
+        session.add(MemeExclusionVote(meme_id=meme_id, kullanici_id=kullanici.id, sebep="diger", notu=KIMSE_KALMADI_NOTU))
+        denetle(session, kullanici.id, MEME, meme_id, OLUSTURMA, alan=OY_ALANI, yeni=yeni)
+    elif oy.karar_id is not None:
+        # Kişinin kararla sonuçlanmış oyu yeniden geçerli olur; sonuçlanmamış oy zaten havuzdadır.
+        denetle(session, kullanici.id, MEME, meme_id, GUNCELLEME, alan=OY_ALANI, eski=oy_degeri(session, oy), yeni=yeni)
+        oy.sebep, oy.notu, oy.zaman, oy.karar_id = "diger", KIMSE_KALMADI_NOTU, simdi(), None
+
+
+def atlananin_yerine_ata(session: Session, eski: Annotation, kullanici: User) -> Optional[Annotation]:
+    """Ana turda atlanan annotation'ın yerine sıradaki uygun kişiyi atar.
+
+    Uygun kimse kalmazsa meme'in başka annotator'ı da yoksa meme havuza düşer. Çift etiketli
+    meme'de bir annotator kaldıysa meme onunla tek etiketli sürer, reviewer ikinci bakışı yapar
+    (ADR-0009). Kalibrasyon turundaki atlama admin'in elle yeniden atamasına kalır.
+    """
+    if eski.kalibrasyon or not otomatik_atanabilir_mi(session, eski.meme_id):
+        return None
+    ana_tur = [a for a in annotationlari_meme_bazinda(session, [eski.meme_id])[eski.meme_id] if not a.kalibrasyon]
+    aktifler = [a for a in ana_tur if aktif_mi(a)]
+    cift = cift_etiket_mi(ana_tur)
+    if len(aktifler) >= (2 if cift else 1):
+        return None
+    kisi_id = siradaki_annotator(session, eski.meme_id)
+    if kisi_id is None:
+        if not aktifler:
+            havuza_dusur(session, eski.meme_id, kullanici)
+            return None
+        for annotation in ana_tur:
+            if annotation.cift_etiket:
+                annotation.cift_etiket = False
+                denetle(session, kullanici.id, ANNOTATION, annotation.id, GUNCELLEME, alan="cift_etiket", eski=True, yeni=False)
+        return None
+
+    yeni = annotation_kaydi(eski.meme_id, kisi_id, cift, False)
+    session.add(yeni)
+    session.flush()  # eski kayıt yenisine bağlanıyor; önce yeni kayıt yazılmalı
+    eski.yerine_gecen_id = yeni.id
+    olusturmayi_denetle(session, kullanici, yeni, otomatik=True, onceki_annotation_id=eski.id)
+    denetle(session, kullanici.id, ANNOTATION, eski.id, GUNCELLEME, alan="yerine_gecen_id", eski=None, yeni=yeni.id)
+    return yeni
+
+
+def ikinci_annotator_ekle(session: Session, annotation: Annotation, kullanici: User) -> Optional[Annotation]:
+    """Tanıdıklığı 3 olan tek etiketli annotation'ın meme'ine sıradaki uygun kişiyi de atar.
+
+    Meme çift etiketli olur, reviewer iki etiketi birleştirir. AI taslaklı meme tek etiketli kalır;
+    onu reviewer'ın ikinci bakışı karşılar (ADR-0010). Uygun kimse yoksa meme tek etiketli sürer.
+    """
+    if annotation.kalibrasyon or annotation.cift_etiket or session.get(AiDraft, annotation.meme_id) is not None:
+        return None
+    if not otomatik_atanabilir_mi(session, annotation.meme_id):
+        return None
+    kisi_id = siradaki_annotator(session, annotation.meme_id)
+    if kisi_id is None:
+        return None
+    annotation.cift_etiket = True
+    denetle(session, kullanici.id, ANNOTATION, annotation.id, GUNCELLEME, alan="cift_etiket", eski=False, yeni=True)
+    yeni = annotation_kaydi(annotation.meme_id, kisi_id, True, False)
+    session.add(yeni)
+    olusturmayi_denetle(session, kullanici, yeni, otomatik=True)
+    return yeni
