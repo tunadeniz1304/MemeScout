@@ -19,6 +19,7 @@ Bir karar değişirse eski kaydı silmeyin; durumunu "Yerini aldı: ADR-NNNN" ya
 | [0008](0008-etiket-sistem-adlari.md) | Etiketlerin sistem adları | Kabul edildi |
 | [0009](0009-tek-etiketli-memelerde-ikinci-bakis.md) | Tek etiketli meme'lerde hafif ikinci bakış | Kabul edildi |
 | [0010](0010-tek-etiketli-memelerde-llm-taslagi.md) | Tek etiketli meme'lerde LLM taslağı | Kabul edildi |
+| [0011](0011-kullanilmasin-oyu-ve-havuz.md) | Kullanılmayacak meme'ler için oy ve havuz | Kabul edildi |
 
 ## Şablon
 

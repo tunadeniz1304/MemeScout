@@ -18,7 +18,7 @@
 | --- | --- |
 | **Annotator** | Kendisine atanan meme'leri etiketler, yorum ve işaret bırakır |
 | **Reviewer** | Çift etiketlenen meme'lerde anlaşmazlıkları çözer, tek etiketlenen meme'lere ikinci bakış yapar, gold kaydı onaylar |
-| **Admin** | Meme yükler, atama yapar, etiket listelerini yönetir, dışa aktarım alır |
+| **Admin** | Meme yükler, atama yapar, etiket listelerini yönetir, havuzdaki meme'ler için kalsın/çıkarılsın kararı verir, dışa aktarım alır |
 
 4 kişilik ekipte herkes annotator'dır. Reviewer rolü dönüşümlü verilir: bir meme'in reviewer'ı, o meme'i etiketleyen kişilerden biri olamaz.
 
@@ -31,7 +31,9 @@ Meme 1───* Annotation *───1 Kullanıcı
  ├──1 GoldKayıt
  ├──* Yorum / İşaret
  ├──* TestSorgusu (doğru cevap olarak)
- └──0..1 AITaslağı (tek etiketli meme'lerde)
+ ├──0..1 AITaslağı (tek etiketli meme'lerde)
+ ├──* KullanılmasınOyu (kişi başına bir)
+ └──* HavuzKararı (kalsın / çıkarılsın)
 
 EtiketListesi (versiyonlu)
 DenetimKaydı (kim, ne zaman, neyi değiştirdi)
@@ -177,13 +179,41 @@ Kurallar:
 - Kart §3.2 kurallarına uymasa da taslak olarak alınır; eksikler içe aktarma raporunda listelenir ve gönderimde annotator'a gösterilir.
 - Kartın `vlm_aciklama` alanı, meme'in `vlm_taslak` alanı boşsa onu doldurur.
 
+### 3.10 Kullanılmasın oyu ve havuz
+
+Veri setine girmemesi gereken meme'ler (kalitesiz görsel, aslında meme olmayan, anlaşılmaz, uygunsuz ya da kopya) etiketleme sırasında işaretlenir ve ekipçe konuşulur ([ADR-0011](adr/0011-kullanilmasin-oyu-ve-havuz.md)).
+
+**Oy** (kişi başına meme başına bir; güncellenebilir ve geri çekilebilir)
+
+| Alan | Açıklama |
+| --- | --- |
+| `meme`, `kullanici` | Hangi meme'e kimin oyu |
+| `sebep` | `kalitesiz_gorsel` (Kalitesiz görsel), `mem_degil` (Mem değil), `anlasilmaz` (Anlaşılmaz), `uygunsuz` (Uygunsuz / rahatsız edici), `kopya` (Kopya), `diger` (Diğer) |
+| `not` | İsteğe bağlı, en fazla 300 karakter |
+| `zaman` | Oyun verildiği ya da son güncellendiği an |
+
+**Havuz kararı** (admin verir; her karar ayrı kayıt, geçerli olan sonuncusu)
+
+| Alan | Açıklama |
+| --- | --- |
+| `karar` | `kalsin` ya da `cikarilsin` |
+| `not` | İsteğe bağlı açıklama |
+| `karar_veren`, `zaman` | |
+
+Kurallar:
+- Oy etiketlemeyi durdurmaz; annotation'ın durumu değişmez. Oy veren isterse işi ayrıca atlar.
+- Tek oy meme'i havuza düşürür. Havuz sayfası admin'e açıktır: oy sayısı, sebepler, notlar ve oy verenlerin takma adları görünür. Etiketleme ekranında kişi yalnızca kendi oyunu görür (kör etiketleme, §4.3).
+- **Kalsın:** meme havuzdan çıkar. Sonradan verilen ya da güncellenen bir oy onu yeniden havuza açar.
+- Karar, meme'in o ana kadarki bütün oylarını sonuçlandırır; oy veren, etiketleme ekranında kendi oyuna verilen kararı görür.
+- **Çıkarılsın:** meme kuyruklardan, atamalardan, incelemeden, uyum hesabından, dışa aktarımdan ve test sorgularının doğru cevaplarından düşer; çıkarılmış meme'e oy verilmez, verilmiş oylar güncellenmez ve geri çekilmez. Annotation'lar ve gold kaydı silinmez. Admin "kalsın" diyerek kararı geri alır.
+
 ## 4. Etiketleme Süreci
 
 ### 4.1 Aşamalar
 
 1. **Kılavuz:** Etiket tanımları ve örneklerle etiketleme kılavuzu yazılır.
 2. **Kalibrasyon turu:** 4 kişinin hepsi aynı 10–15 meme'i etiketler. Sonuçlar birlikte tartışılır ve kılavuz güncellenir. Bu turun etiketleri `kalibrasyon` ile işaretlenir ve uyum ölçümüne katılmaz.
-3. **Ana etiketleme:** 300 meme 4 kişiye bölünür, kişi başı ~75 meme. AI taslağı olan tek etiketli meme'lerde form taslakla dolu gelir (§3.9).
+3. **Ana etiketleme:** 300 meme 4 kişiye bölünür, kişi başı ~75 meme. AI taslağı olan tek etiketli meme'lerde form taslakla dolu gelir (§3.9). Kullanılmaması gereken bir meme görülürse "Bu mem kullanılmasın" oyu verilir; havuz ekip toplantısında konuşulur (§3.10).
 4. **Çift etiketleme:** Meme'lerin ~%20'si (~60 meme) ikinci bir kişiye de atanır. 4 kişiden 6 farklı ikili çıkar, her ikiliye ~10 meme düşer. Böylece uyum, kişiden bağımsız ölçülür. İlk yarısı (~30 meme) bittiğinde ara uyum ölçümü yapılır (§6).
 5. **Uyum ölçümü ve çözüm:** Anlaşmazlıkları üçüncü bir kişi (reviewer) çözer.
 6. **İkinci bakış:** Tek etiketlenen meme'leri, onları etiketlemeyen bir reviewer hızlıca kontrol eder; onaylar ya da `revizyon_notu` ile geri gönderir ([ADR-0009](adr/0009-tek-etiketli-memelerde-ikinci-bakis.md)). Bu kontrol uyum ölçümüne katılmaz.
@@ -220,6 +250,7 @@ Kural yorumları da kapsar ([ADR-0003](adr/0003-kor-etiketlemede-yorumlar-gizli.
 - Doğrulama kuralları ihlal edilirse gönderme engellenir ve sebebi gösterilir
 - Göndermeden önce eksikleri gösteren "Doğrula" butonu
 - Uyarı etiketlerinin yanında ayrı bir "Uyarı yok" onay kutusu
+- "Bu mem kullanılmasın" oyu: sebep listesi ve isteğe bağlı not; kişi kendi oyunu görür, değiştirir ya da geri çeker
 
 **Yönetim ve takip**
 - İlerleme panosu: kişi başı tamamlanan, kalan, atlanan, ortalama süre
@@ -230,6 +261,7 @@ Kural yorumları da kapsar ([ADR-0003](adr/0003-kor-etiketlemede-yorumlar-gizli.
 - Otomatik dağıtım: atanmamış meme'leri annotator'lara eşit böler, ~%20'sini ikinci bir kişiye de atar ve ikinci atamaları ikililere dengeli dağıtır. Önce plan görülebilir. İlk sürümde olmayabilir
 - Yeniden atama: atlanan ya da tanıdıklığı düşük annotation başka birine atanır
 - Revizyon isteme: reviewer ya da admin, gönderilmiş bir annotation için notla revizyon ister. İlk sürümde olmayabilir
+- Havuz: oy alan meme'ler sebepleri ve notlarıyla listelenir; admin "kalsın" ya da "çıkarılsın" der
 
 **Dışa aktarım**
 - `gold.jsonl`: Meme başına bir satır gold kayıt, architecture.md şemasında. `annotator` ve `uyari` her zaman listedir (`null` olmaz)
