@@ -18,6 +18,8 @@ BEKLENEN_TABLOLAR = {
     "label_list_version",
     "test_query",
     "audit_entry",
+    "meme_exclusion_vote",
+    "meme_exclusion_decision",
 }
 
 

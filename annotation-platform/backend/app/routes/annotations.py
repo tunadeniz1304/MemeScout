@@ -9,6 +9,7 @@ from app.database import get_session
 from app.denetim import ANNOTATION, DURUM_DEGISIKLIGI, GUNCELLEME, denetle, farklari_denetle
 from app.errors import ApiHatasi
 from app.etiketler import guncel_liste
+from app.havuz import cikarilmamis_olmali, cikarilmis_memeler
 from app.kurallar import BEKLEYEN_DURUMLAR, annotation_gorebilir_mi, meme_annotationlari
 from app.models import (
     ATANDI,
@@ -139,9 +140,11 @@ def kuyrugum(
             Annotation.atanma_zamani,
         ).where(Annotation.annotator_id == kullanici.id, Annotation.durum_kodu.in_(durumlar))
     ).all()
+    # Havuz kararıyla çıkarılan meme'lerin işleri kuyrukta görünmez (ADR-0011).
+    cikarilanlar = cikarilmis_memeler(session, {satir.meme_id for satir in satirlar})
     # Kalibrasyon turu ana turdan önce yapılır.
     satirlar = sorted(
-        satirlar,
+        (satir for satir in satirlar if satir.meme_id not in cikarilanlar),
         key=lambda satir: (not satir.kalibrasyon, KUYRUK_SIRASI.get(satir.durum_kodu, 9), satir.atanma_zamani, satir.meme_id),
     )
     return [
@@ -178,6 +181,7 @@ def baslat(
 ):
     annotation = annotation_getir(session, annotation_id, kilitle=True)
     sahibi_olmali(annotation, kullanici)
+    cikarilmamis_olmali(session, annotation.meme_id)
     if annotation.durum_kodu in DUZENLENEBILIR:
         # Zaten başlamış: aynı annotation döner.
         return cikti.annotation(annotation, cikti.kullanicilar(session))
@@ -223,6 +227,7 @@ def taslak_kaydet(
 ):
     annotation = annotation_getir(session, annotation_id, kilitle=True)
     sahibi_olmali(annotation, kullanici)
+    cikarilmamis_olmali(session, annotation.meme_id)
     durumda_olmali(annotation, DUZENLENEBILIR, "taslak kaydı")
     surum_eslesmeli(annotation, veri.surum)
     if veri.alan_guveni is not None:
@@ -286,6 +291,7 @@ def gonder(
 ):
     annotation = annotation_getir(session, annotation_id, kilitle=True)
     sahibi_olmali(annotation, kullanici)
+    cikarilmamis_olmali(session, annotation.meme_id)
     durumda_olmali(annotation, DUZENLENEBILIR, "gönderim")
     surum_eslesmeli(annotation, veri.surum)
     if annotation.tanidiklik in (1, 2):

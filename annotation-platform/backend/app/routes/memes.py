@@ -12,6 +12,7 @@ from app.database import get_session
 from app.denetim import GUNCELLEME, MEME, OLUSTURMA, denetle
 from app.errors import ApiHatasi
 from app.etiketler import guncel_liste
+from app.havuz import cikarilmis_memeler
 from app.kurallar import MemeBaglami
 from app.metin import tr_kucuk
 from app.models import AiDraft, Annotation, GoldRecord, Meme, MemeImage, User
@@ -171,6 +172,7 @@ def ai_taslaklarini_ekle(
     meme_idleri = [meme.id for meme in memeler.values()]
     taslaklilar = set(session.exec(select(AiDraft.meme_id).where(AiDraft.meme_id.in_(meme_idleri))).all())
     goldlular = set(session.exec(select(GoldRecord.meme_id).where(GoldRecord.meme_id.in_(meme_idleri))).all())
+    cikarilanlar = cikarilmis_memeler(session, meme_idleri)
     annotationlar: dict[str, list] = {}
     sorgu = select(Annotation.meme_id, Annotation.durum_kodu, Annotation.cift_etiket, Annotation.kalibrasyon)
     for satir in session.exec(sorgu.where(Annotation.meme_id.in_(meme_idleri))).all():
@@ -184,6 +186,8 @@ def ai_taslaklarini_ekle(
             sorun = ("tekrar", "Aynı görsel bu istekte birden fazla kartta geçiyor; ilki alındı.")
         elif meme is None:
             sorun = ("meme_yok", "Bu görselle yüklenmiş bir meme yok; görsel önce yüklenmeli.")
+        elif meme.id in cikarilanlar:
+            sorun = ("cikarildi", "Bu meme havuz kararıyla kullanımdan çıkarıldı.")
         else:
             sorun = taslak_engeli(meme.id in taslaklilar, meme.id in goldlular, annotationlar.get(meme.id, []))
         gorulenler.add(taslak.sha256)

@@ -110,6 +110,17 @@ Taslak gold olmaz. AI taslağı olan meme tek etiketli kalır: atanan annotator 
 
 PNG'ye dönüştürülmüş bir görsel, zip'teki orijinalle aynı sha256'yı taşımaz ve ayrı bir meme olarak yüklenir. Kartların görselleri zip'teki dosyaların birebir kopyası olmalıdır.
 
+### Kullanılmasın oyu ve havuz
+
+Etiketleme ekranında görselin altındaki "Bu mem kullanılmasın" düğmesi, sebep (kalitesiz görsel, mem değil, anlaşılmaz, uygunsuz / rahatsız edici, kopya, diğer) ve isteğe bağlı en fazla 300 karakterlik notla oy verir ([ADR-0011](../docs/adr/0011-kullanilmasin-oyu-ve-havuz.md)). Kişi başına meme başına tek oy vardır; oy güncellenir ve geri çekilir. Oy etiketlemeyi durdurmaz, annotation'ın durumu değişmez. Kişi yalnızca kendi oyunu görür.
+
+Tek oy meme'i havuza düşürür. Admin "Havuz" sekmesinde oy sayısını, sebepleri, notları ve oy verenlerin takma adlarını görür; ekip konuştuktan sonra karar verir:
+
+- **Kalsın:** meme havuzdan çıkar. Sonradan verilen ya da güncellenen bir oy onu yeniden havuza açar.
+- **Çıkarılsın:** meme'in durumu `cikarildi` olur; kuyruklardan, atamalardan, incelemeden, uyum hesabından, dışa aktarımdan ve test sorgularının doğru cevaplarından düşer. O meme'de start, draft, submit, revizyon, inceleme ve gold işlemleri 409 `MEME_CIKARILDI` döner; atlama serbesttir. Annotation'lar ve gold kaydı silinmez; admin "Kalsın" diyerek kararı geri alır.
+
+Oylar `meme_exclusion_vote`, kararlar `meme_exclusion_decision` tablosundadır. İkisi de yeni tablo olduğu için sunucu açılışta onları oluşturur ve RLS'i açar; canlı veritabanında elle bir değişiklik gerekmez.
+
 ### Testler
 
 ```bash
@@ -128,5 +139,6 @@ Testler bellek içi SQLite kullanır, `DATABASE_URL` gerekmez.
 | Versiyonlu etiket listeleri ve tohum etiketler | `app/etiketler.py` |
 | Yeniden kontrol listesi | `app/yeniden_kontrol.py` |
 | AI taslakları ve formun önceden doldurulması | `app/ai_taslak.py` |
+| Kullanılmasın oyu ve havuz kararı | `app/havuz.py` |
 | Uyum ölçüleri (Cohen's kappa, MASI ile Krippendorff's alpha) | `app/olcum.py` |
 | Denetim kaydı | `app/denetim.py` |

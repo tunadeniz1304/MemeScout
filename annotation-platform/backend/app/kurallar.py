@@ -11,6 +11,7 @@ from typing import Iterable, Optional
 
 from sqlmodel import Session, select
 
+from app.havuz import cikarilmis_memeler
 from app.models import (
     ATANDI,
     ATLANDI,
@@ -35,6 +36,7 @@ ETIKETLENIYOR = "etiketleniyor"
 INCELEME_BEKLIYOR = "inceleme_bekliyor"
 GOLD_HAZIR = "gold_hazir"
 YENIDEN_KONTROL = "yeniden_kontrol"
+CIKARILDI = "cikarildi"
 
 
 def aktif_mi(annotation) -> bool:
@@ -113,7 +115,10 @@ def incelemeye_hazir_mi(meme_annotationlari: list) -> bool:
     return len(grup) >= gereken and all(a.durum_kodu == GONDERILDI for a in grup)
 
 
-def meme_durumu(meme_annotationlari: list, gold_var: bool, yeniden_kontrol: bool = False) -> str:
+def meme_durumu(meme_annotationlari: list, gold_var: bool, yeniden_kontrol: bool = False, cikarildi: bool = False) -> str:
+    # Havuz kararıyla çıkarılan meme, annotation'ları ne durumda olursa olsun çıkarılmış görünür (ADR-0011).
+    if cikarildi:
+        return CIKARILDI
     if yeniden_kontrol:
         return YENIDEN_KONTROL
     if gold_var:
@@ -151,6 +156,7 @@ class MemeBaglami:
             yorum_sorgusu = yorum_sorgusu.where(Comment.meme_id.in_(meme_idleri))
             taslak_sorgusu = taslak_sorgusu.where(AiDraft.meme_id.in_(meme_idleri))
         self.ai_taslaklari = set(session.exec(taslak_sorgusu).all())
+        self.cikarilanlar = cikarilmis_memeler(session, meme_idleri)
 
         self.annotationlar: dict[str, list] = {}
         for satir in session.exec(annotation_sorgusu).all():
@@ -178,7 +184,12 @@ class MemeBaglami:
         return meme_id in self.gold_adlari
 
     def durum(self, meme_id: str) -> str:
-        return meme_durumu(self.meme_annotationlari(meme_id), self.gold_var(meme_id), meme_id in self.yeniden_kontrol)
+        return meme_durumu(
+            self.meme_annotationlari(meme_id),
+            self.gold_var(meme_id),
+            meme_id in self.yeniden_kontrol,
+            meme_id in self.cikarilanlar,
+        )
 
     def annotatorlar(self, meme_id: str) -> list[str]:
         idler: list[str] = []

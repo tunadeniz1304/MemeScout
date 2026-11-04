@@ -23,6 +23,6 @@ def islemler(yollar: dict, onek: str = "") -> set[tuple[str, str]]:
 def test_sozlesmedeki_her_islem_uygulanmis():
     sozlesme = islemler(yaml.safe_load(SOZLESME.read_text(encoding="utf-8"))["paths"])
     uygulama = islemler(app.openapi()["paths"], onek="/api/v1")
-    assert len(sozlesme) == 45
+    assert len(sozlesme) == 50
     assert sozlesme - uygulama == set()
     assert uygulama - sozlesme == {("GET", "/health")}

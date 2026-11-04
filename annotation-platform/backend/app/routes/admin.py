@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 
 from app import cikti
 from app.database import get_session
+from app.havuz import cikarilmis_memeler
 from app.kurallar import annotation_gorebilir_mi, gold_gorebilir_mi
 from app.models import AiDraft, Annotation, AuditEntry, GoldRecord, Meme, TestQuery, User
 from app.schemas import AnnotationOut, AuditPageOut, KayitTipi, RecheckItemOut, TestQueryOut
@@ -24,6 +25,8 @@ def yeniden_kontrol(
     kullanici: User = Depends(aktif_kullanici),
 ):
     kayitlar = yeniden_kontrol_listesi(session)
+    cikarilanlar = cikarilmis_memeler(session, {kayit["meme_id"] for kayit in kayitlar})
+    kayitlar = [kayit for kayit in kayitlar if kayit["meme_id"] not in cikarilanlar]
     if not kayitlar:
         return []
     # Etkilenen etiketler kaydın içeriğini açığa çıkarır; kişi yalnızca görebildiği kayıtları görür.
@@ -90,18 +93,21 @@ def denetim_kaydi(
     }
 
 
-# --- Dışa aktarım: kullanıcılar takma adla (takma_ad, ör. a1) yazılır ---
+# --- Dışa aktarım: kullanıcılar takma adla (takma_ad, ör. a1) yazılır; havuz kararıyla
+# çıkarılan meme'ler dışa aktarılmaz (ADR-0011) ---
 
 def _takma_ref(kisiler: dict[str, User], kullanici_id: Optional[str]) -> Optional[dict]:
     kisi = kisiler.get(kullanici_id)
     return None if kisi is None else {"id": kisi.takma_ad, "gorunen_ad": kisi.takma_ad}
 
 
-def gold_satirlari(session: Session, kisiler: dict[str, User]) -> list[dict]:
+def gold_satirlari(session: Session, kisiler: dict[str, User], cikarilanlar: set[str]) -> list[dict]:
     memeler = {meme.id: meme for meme in session.exec(select(Meme)).all()}
     sahipler = dict(session.exec(select(Annotation.id, Annotation.annotator_id)).all())
     satirlar = []
     for gold in session.exec(select(GoldRecord).order_by(GoldRecord.meme_id)).all():
+        if gold.meme_id in cikarilanlar:
+            continue
         icerik = {**bos_icerik(), **gold.icerik}
         icerik["uyari"] = icerik["uyari"] or []  # gold.jsonl'de uyari her zaman listedir (ADR-0004)
         annotatorlar = []
@@ -122,23 +128,27 @@ def gold_satirlari(session: Session, kisiler: dict[str, User]) -> list[dict]:
     return satirlar
 
 
-def annotation_satirlari(session: Session, kisiler: dict[str, User]) -> list[dict]:
+def annotation_satirlari(session: Session, kisiler: dict[str, User], cikarilanlar: set[str]) -> list[dict]:
     satirlar = []
     for annotation in session.exec(select(Annotation).order_by(Annotation.meme_id, Annotation.atanma_zamani, Annotation.id)).all():
+        if annotation.meme_id in cikarilanlar:
+            continue
         satir = {**cikti.annotation(annotation, kisiler), "annotator": _takma_ref(kisiler, annotation.annotator_id)}
         satirlar.append(AnnotationOut.model_validate(satir).model_dump(mode="json"))
     return satirlar
 
 
-def sorgu_seti_satirlari(session: Session, kisiler: dict[str, User]) -> list[dict]:
+def sorgu_seti_satirlari(session: Session, kisiler: dict[str, User], cikarilanlar: set[str]) -> list[dict]:
     satirlar = []
     for sorgu in session.exec(select(TestQuery).order_by(TestQuery.zaman, TestQuery.id)).all():
-        satir = {**cikti.test_sorgusu(sorgu, kisiler), "yazan": _takma_ref(kisiler, sorgu.yazan_id)}
+        satir = {**cikti.test_sorgusu(sorgu, kisiler, cikarilanlar), "yazan": _takma_ref(kisiler, sorgu.yazan_id)}
+        if not satir["dogru_memeler"]:
+            continue  # bütün doğru cevapları çıkarılan sorgu ölçülemez
         satirlar.append(TestQueryOut.model_validate(satir).model_dump(mode="json"))
     return satirlar
 
 
-def ai_taslak_satirlari(session: Session, kisiler: dict[str, User]) -> list[dict]:
+def ai_taslak_satirlari(session: Session, kisiler: dict[str, User], cikarilanlar: set[str]) -> list[dict]:
     memeler = {meme.id: meme for meme in session.exec(select(Meme)).all()}
     return [
         {
@@ -150,6 +160,7 @@ def ai_taslak_satirlari(session: Session, kisiler: dict[str, User]) -> list[dict
             "olusturma_zamani": cikti.iso_zaman(taslak.olusturma_zamani),
         }
         for taslak in session.exec(select(AiDraft).order_by(AiDraft.meme_id)).all()
+        if taslak.meme_id not in cikarilanlar
     ]
 
 
@@ -167,7 +178,7 @@ def disa_aktar(
     session: Session = Depends(get_session),
     _: User = Depends(admin_kullanici),
 ):
-    satirlar = DISA_AKTARIMLAR[dosya](session, cikti.kullanicilar(session))
+    satirlar = DISA_AKTARIMLAR[dosya](session, cikti.kullanicilar(session), cikarilmis_memeler(session))
     govde = "".join(json.dumps(satir, ensure_ascii=False) + "\n" for satir in satirlar)
     return Response(
         content=govde,

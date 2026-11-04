@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 
 from app import cikti
 from app.database import get_session
+from app.havuz import cikarilmis_memeler
 from app.kurallar import (
     ATANMADI,
     BEKLEYEN_DURUMLAR,
@@ -29,7 +30,7 @@ def yeniden_atama_bekleyen(baglam: MemeBaglami, yerine_gecmeyenler: set[str]) ->
     """Atlanmış, yerine kimse atanmamış ve meme'inde hâlâ annotator eksik olan ana tur annotation'ları."""
     sayi = 0
     for meme_id, annotationlar in baglam.annotationlar.items():
-        if baglam.gold_var(meme_id):
+        if baglam.gold_var(meme_id) or meme_id in baglam.cikarilanlar:
             continue
         gereken = 2 if cift_etiket_mi(annotationlar) else 1
         eksik = gereken - len(grubu(annotationlar, False))
@@ -47,12 +48,18 @@ def ilerleme(
     _: User = Depends(aktif_kullanici),
 ):
     baglam = MemeBaglami(session)
-    meme_idleri = session.exec(select(Meme.id)).all()
+    # Havuz kararıyla çıkarılan meme'ler ayrı sayılır; diğer sayılara katılmaz (ADR-0011).
+    meme_idleri = [meme_id for meme_id in session.exec(select(Meme.id)).all() if meme_id not in baglam.cikarilanlar]
     durumlar = Counter(baglam.durum(meme_id) for meme_id in meme_idleri)
     yerine_gecmeyenler = set(session.exec(
         select(Annotation.id).where(Annotation.durum_kodu == ATLANDI, Annotation.yerine_gecen_id == None)  # noqa: E711
     ).all())
-    satirlar = session.exec(select(Annotation.annotator_id, Annotation.durum_kodu, Annotation.harcanan_sure_sn)).all()
+    satirlar = [
+        satir for satir in session.exec(
+            select(Annotation.annotator_id, Annotation.meme_id, Annotation.durum_kodu, Annotation.harcanan_sure_sn)
+        ).all()
+        if satir.meme_id not in baglam.cikarilanlar
+    ]
 
     kisiler = []
     for kisi in sorted(cikti.kullanicilar(session).values(), key=lambda k: k.kullanici_adi):
@@ -73,9 +80,10 @@ def ilerleme(
         "genel": {
             "toplam_meme": len(meme_idleri),
             "atanmamis": durumlar[ATANMADI],
-            "gold_hazir": len(session.exec(select(GoldRecord.meme_id)).all()),
+            "gold_hazir": sum(1 for meme_id in session.exec(select(GoldRecord.meme_id)).all() if meme_id not in baglam.cikarilanlar),
             "inceleme_bekleyen": durumlar[INCELEME_BEKLIYOR],
             "yeniden_atama_bekleyen": yeniden_atama_bekleyen(baglam, yerine_gecmeyenler),
+            "cikarilan": len(baglam.cikarilanlar),
         },
         "kullanicilar": kisiler,
     }
@@ -92,8 +100,12 @@ def uyum(
     kullanici: User = Depends(aktif_kullanici),
 ):
     ana_tur = session.exec(select(Annotation).where(Annotation.kalibrasyon == False)).all()  # noqa: E712
+    cikarilanlar = cikarilmis_memeler(session)
     meme_bazinda: dict[str, list[Annotation]] = {}
     for annotation in ana_tur:
+        # Çıkarılan meme ölçüme katılmaz; yarım kalan çift etiketlemesi kör etiketlemeyi de sürdürmez.
+        if annotation.meme_id in cikarilanlar:
+            continue
         meme_bazinda.setdefault(annotation.meme_id, []).append(annotation)
 
     # Yalnızca iki annotation'ı da gönderilmiş çift etiketli meme'ler; kalibrasyon turu katılmaz.

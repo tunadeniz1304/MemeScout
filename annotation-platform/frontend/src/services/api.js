@@ -94,6 +94,11 @@ export const api = {
   comments: (filters = {}) => request(`/comments${queryString({ cozuldu: filters.cozuldu, tur: filters.tur, sayfa: filters.sayfa, boyut: filters.boyut })}`),
   updateComment: (commentId, cozuldu) => request(`/comments/${idPath(commentId)}`, json('PATCH', { cozuldu })),
 
+  // "Bu mem kullanılmasın" oyu (ADR-0011): kişi yalnızca kendi oyunu görür. Oy yoksa GET 404 döner.
+  exclusionVote: (memeId) => request(`/memes/${idPath(memeId)}/exclusion-vote`),
+  putExclusionVote: (memeId, vote) => request(`/memes/${idPath(memeId)}/exclusion-vote`, json('PUT', vote)),
+  deleteExclusionVote: (memeId) => request(`/memes/${idPath(memeId)}/exclusion-vote`, { method: 'DELETE' }),
+
   // Assignments (admin)
   createAssignment: (assignment) => request('/assignments', json('POST', assignment)),
   autoAssign: (plan) => request('/assignments/auto', json('POST', plan)),
@@ -125,6 +130,8 @@ export const api = {
   progressStats: () => request('/stats/progress'),
   agreementStats: () => request('/stats/agreement'),
   recheck: () => request('/recheck'),
+  exclusionPool: (durum = 'bekliyor') => request(`/exclusion-pool${queryString({ durum })}`),
+  decideExclusion: (memeId, decision) => request(`/exclusion-pool/${idPath(memeId)}/decision`, json('POST', decision)),
   audit: (filters = {}) => request(`/audit${queryString({ kayit_tipi: filters.kayit_tipi, kayit_id: filters.kayit_id, kullanici_id: filters.kullanici_id, sayfa: filters.sayfa, boyut: filters.boyut })}`),
   exportFile: (filename) => {
     if (!['gold.jsonl', 'annotations_raw.jsonl', 'test_set.jsonl'].includes(filename)) throw new TypeError('Desteklenmeyen dışa aktarım dosyası.')
