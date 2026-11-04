@@ -23,6 +23,7 @@ from app.models import (
     User,
     simdi,
 )
+from app.routes.assignments import atlananin_yerine_ata, ikinci_annotator_ekle
 from app.schemas import (
     AnnotationDraftIn,
     AnnotationOut,
@@ -305,11 +306,16 @@ def gonder(
         raise ApiHatasi(422, "DOGRULAMA", "Gönderim için bazı alanlar eksik veya hatalı.", alanlar=hatalar)
 
     # Gold kaydı yalnızca reviewer onayıyla oluşur; tek etiketli meme de ikinci bakışa gider (ADR-0009).
+    ilk_gonderim = annotation.durum_kodu == DEVAM_EDIYOR
     durumu_degistir(session, annotation, GONDERILDI, kullanici)
     annotation.gonderme_zamani = annotation.guncellenme_zamani
     # İçerik bu anki listeye göre doğrulandı; kayıt da bu versiyona sabitlenir.
     annotation.sema_versiyonu = SEMA_VERSIYONU
     annotation.etiket_listesi_versiyonu = liste.versiyon
+    # Tanıdıklık 3 orta güvendir: ilk gönderimde meme ikinci bir kişiye de gider (ADR-0013).
+    # Revizyondan dönen annotation'ı reviewer zaten görmüştür; ona ikinci kişi eklenmez.
+    if ilk_gonderim and annotation.tanidiklik == 3:
+        ikinci_annotator_ekle(session, annotation, kullanici)
     return kaydet_ve_don(session, annotation)
 
 
@@ -330,6 +336,8 @@ def atla(
     if veri.tanidiklik is not None and veri.tanidiklik != annotation.tanidiklik:
         denetle(session, kullanici.id, ANNOTATION, annotation.id, GUNCELLEME, alan="tanidiklik", eski=annotation.tanidiklik, yeni=veri.tanidiklik)
         annotation.tanidiklik = veri.tanidiklik
+    # Ana turda atlanan meme sıradaki uygun kişiye gider (ADR-0013).
+    atlananin_yerine_ata(session, annotation, kullanici)
     return kaydet_ve_don(session, annotation)
 
 

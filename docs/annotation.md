@@ -100,7 +100,7 @@ Her meme–annotator çifti için ayrı bir kayıt tutulur. Alanların anlamı [
 | `surum` | int | Her taslak kaydında artar. İstemci son bildiği sürümü gönderir; eşleşmezse backend `409 SURUM_CAKISMASI` döner. Aynı annotation iki sekmede açıksa veri kaybını önler |
 | `revizyon_notu` | metin | Reviewer ya da admin revizyon isterken yazdığı not; annotator'ın kuyruğunda görünür |
 
-`tanidiklik` ve `alan_guveni` önemli: Kültürel bağlamı bilmeyen birinin etiketi, bilen birininkiyle aynı ağırlıkta olmamalı. Tanıdıklık skoru 1 veya 2 olan annotation gönderilemez; atlanır ve başka birine yeniden atanır.
+`tanidiklik` ve `alan_guveni` önemli: Kültürel bağlamı bilmeyen birinin etiketi, bilen birininkiyle aynı ağırlıkta olmamalı. Tanıdıklık skoru 1 veya 2 olan annotation gönderilemez; atlanır ve meme sıradaki uygun kişiye otomatik atanır (§4.2). Tanıdıklık 3 orta güvendir: bu puanla ilk kez gönderilen tek etiketli meme ikinci bir kişiye de atanır ve çift etiketli olur, reviewer iki etiketi birleştirir. 4 ve 5 tek başına yeterlidir. AI taslaklı meme'ler bunun dışındadır, onları reviewer'ın ikinci bakışı karşılar ([ADR-0013](adr/0013-otomatik-yeniden-atama.md)).
 
 ### 3.4 Gold kayıt
 
@@ -208,6 +208,7 @@ Kurallar:
 - Tek oy meme'i havuza düşürür. Havuz sayfası admin'e açıktır: oy sayısı, sebepler, notlar ve oy verenlerin takma adları görünür. Etiketleme ekranında kişi yalnızca kendi oyunu görür (kör etiketleme, §4.3).
 - **Kalsın:** meme havuzdan çıkar. Sonradan verilen ya da güncellenen bir oy onu yeniden havuza açar.
 - Karar, meme'in o ana kadarki bütün oylarını sonuçlandırır; oy veren, etiketleme ekranında kendi oyuna verilen kararı görür.
+- Ana turda atlanan meme'e atanabilecek kimse kalmazsa platform, son atlayan kişi adına `diger` sebepli ve "kimse kalmadı" notlu oy verir; meme havuza düşer (§4.2, [ADR-0013](adr/0013-otomatik-yeniden-atama.md)).
 - **Çıkarılsın:** meme kuyruklardan, atamalardan, incelemeden, uyum hesabından, dışa aktarımdan ve test sorgularının doğru cevaplarından düşer; çıkarılmış meme'e oy verilmez, verilmiş oylar güncellenmez ve geri çekilmez. Annotation'lar ve gold kaydı silinmez. Admin "kalsın" diyerek kararı geri alır.
 
 ## 4. Etiketleme Süreci
@@ -217,7 +218,7 @@ Kurallar:
 1. **Kılavuz:** Etiket tanımları ve örneklerle etiketleme kılavuzu yazılır.
 2. **Kalibrasyon turu:** 4 kişinin hepsi aynı 10–15 meme'i etiketler. Sonuçlar birlikte tartışılır ve kılavuz güncellenir. Bu turun etiketleri `kalibrasyon` ile işaretlenir ve uyum ölçümüne katılmaz.
 3. **Ana etiketleme:** 300 meme 4 kişiye bölünür, kişi başı ~75 meme. AI taslağı olan tek etiketli meme'lerde form taslakla dolu gelir (§3.9). Kullanılmaması gereken bir meme görülürse "Bu mem kullanılmasın" oyu verilir; havuz ekip toplantısında konuşulur (§3.10).
-4. **Çift etiketleme:** Meme'lerin ~%20'si (~60 meme) ikinci bir kişiye de atanır. 4 kişiden 6 farklı ikili çıkar, her ikiliye ~10 meme düşer. Böylece uyum, kişiden bağımsız ölçülür. İlk yarısı (~30 meme) bittiğinde ara uyum ölçümü yapılır (§6).
+4. **Çift etiketleme:** Meme'lerin ~%20'si (~60 meme) ikinci bir kişiye de atanır. 4 kişiden 6 farklı ikili çıkar, her ikiliye ~10 meme düşer. Böylece uyum, kişiden bağımsız ölçülür. İlk yarısı (~30 meme) bittiğinde ara uyum ölçümü yapılır (§6). Bunlara ek olarak tanıdıklık 3 ile gönderilen tek etiketli meme'ler de ikinci bir kişiye gider (§3.3).
 5. **Uyum ölçümü ve çözüm:** Anlaşmazlıkları üçüncü bir kişi (reviewer) çözer.
 6. **İkinci bakış:** Tek etiketlenen meme'leri, onları etiketlemeyen bir reviewer hızlıca kontrol eder; onaylar ya da `revizyon_notu` ile geri gönderir ([ADR-0009](adr/0009-tek-etiketli-memelerde-ikinci-bakis.md)). Bu kontrol uyum ölçümüne katılmaz.
 7. **Test seti:** ~100 meme test setine ayrılır ve etiketleme atamalarına girmez ([ADR-0012](adr/0012-test-seti-ayri-kume.md)). Herkes bu fotoğrafların her birine, aratınca o memin çıkması gereken 2-3 cümle yazar; en az biri tarif olur. Sızıntı kuralı geçerlidir. Bunlardan 20'si için 2'şer parafraz varyantı eklenir (§3.7, `parafraz_grubu`).
@@ -232,7 +233,13 @@ atanmadi → atandi → devam_ediyor → gonderildi ─┬─► onaylandi
                     atlandi (tanımıyorum / uygun değil)
 ```
 
-Revizyonu reviewer ya da admin `revizyon_notu` ile ister (`gonderildi → revizyon_gerekli`). Atlanan ya da tanıdıklığı düşük annotation'ı admin başka birine yeniden atar ([ADR-0007](adr/0007-ek-api-islemleri.md)).
+Revizyonu reviewer ya da admin `revizyon_notu` ile ister (`gonderildi → revizyon_gerekli`).
+
+Ana turda atlanan meme sıradaki uygun kişiye otomatik atanır ([ADR-0013](adr/0013-otomatik-yeniden-atama.md)). Uygun kişi, ana turda işi olan, bu meme'e daha önce atanmamış (atlamış da sayılır) ve ona test sorgusu yazmamış kişilerden açık işi en az olandır. Uygun kimse kalmazsa:
+- Meme'in başka annotator'ı da yoksa meme "kimse kalmadı" oyuyla havuza düşer (§3.10).
+- Çift etiketli meme'de bir annotator kaldıysa meme onunla tek etiketli sürer ve ikinci bakışa gider.
+
+Kalibrasyon turundaki atlamayı admin elle yeniden atar ([ADR-0007](adr/0007-ek-api-islemleri.md)).
 
 ### 4.3 Kör etiketleme
 
@@ -262,7 +269,7 @@ Kural yorumları da kapsar ([ADR-0003](adr/0003-kor-etiketlemede-yorumlar-gizli.
 - İkinci bakış kuyruğu: reviewer'a düşen tek etiketli kayıtlar; onayla ya da notla geri gönder
 - Kopya uyarısı: yüklenen dosyanın `sha256` değeri mevcut bir meme'le aynıysa yüklemeyi engelle
 - Otomatik dağıtım: atanmamış meme'leri annotator'lara eşit böler, ~%20'sini ikinci bir kişiye de atar ve ikinci atamaları ikililere dengeli dağıtır. Önce plan görülebilir. İlk sürümde olmayabilir
-- Yeniden atama: atlanan ya da tanıdıklığı düşük annotation başka birine atanır
+- Yeniden atama: ana turda atlanan meme sıradaki uygun kişiye otomatik gider (§4.2); kalibrasyon turundaki atlamayı admin elle atar
 - Revizyon isteme: reviewer ya da admin, gönderilmiş bir annotation için notla revizyon ister. İlk sürümde olmayabilir
 - Havuz: oy alan meme'ler sebepleri ve notlarıyla listelenir; admin "kalsın" ya da "çıkarılsın" der
 

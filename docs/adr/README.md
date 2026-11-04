@@ -21,6 +21,7 @@ Bir karar değişirse eski kaydı silmeyin; durumunu "Yerini aldı: ADR-NNNN" ya
 | [0010](0010-tek-etiketli-memelerde-llm-taslagi.md) | Tek etiketli meme'lerde LLM taslağı | Kabul edildi |
 | [0011](0011-kullanilmasin-oyu-ve-havuz.md) | Kullanılmayacak meme'ler için oy ve havuz | Kabul edildi |
 | [0012](0012-test-seti-ayri-kume.md) | Test seti etiketlemeden ayrı, sorgu yazan o meme'i etiketleyemez | Kabul edildi |
+| [0013](0013-otomatik-yeniden-atama.md) | Atlanan meme otomatik yeniden atanır, tanıdıklık 3'te ikinci kişi eklenir | Kabul edildi |
 
 ## Şablon
 

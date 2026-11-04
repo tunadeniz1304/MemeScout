@@ -65,3 +65,14 @@ def test_deneme_eksik_gorseli_bildirir(tmp_path, klasor, capsys):
     dosya.write_text(json.dumps({"yazan": "esmacalis", "sorgular": [{"gorsel": "final/yok.png", "metin": "Geç kalan arkadaş"}]}), encoding="utf-8")
     assert main(["--deneme", "--gorseller", str(klasor), "--sorgular", str(dosya)]) == 1
     assert "Görsel bulunamadı: final/yok.png" in capsys.readouterr().out
+
+
+def test_api_hatasi_nedeniyle_durur():
+    class Yanit:
+        status_code = 500
+
+        def json(self):
+            return {"hata": {"kod": "SUNUCU_HATASI", "mesaj": "Sunucuda beklenmeyen bir hata oluştu."}}
+
+    with pytest.raises(SystemExit, match=r"Meme listesi okunamadı \(500\): Sunucuda beklenmeyen bir hata oluştu\."):
+        meme_haritasi(lambda yontem, yol, **ek: Yanit())
