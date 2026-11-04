@@ -25,3 +25,4 @@ Each development phase `P<n>` is released as `v0.<n>.0`.
 
 - Annotation form: the new fields, inactive labels, clearing field confidence and opening the next item after a skip.
 - Annotation screen: when no item is open but the queue still has work, it offers the next item instead of saying everything is done.
+- Test set import script: stops with the API's error message instead of crashing with a `KeyError` when a read fails.

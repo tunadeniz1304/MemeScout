@@ -46,6 +46,13 @@ def _mesaj(yanit) -> str:
         return ""
 
 
+def _okunan(yanit, ne: str):
+    # API hata dönerse betik yanıtın gövdesini okumaya çalışıp KeyError ile çökmesin, nedeni yazsın.
+    if yanit.status_code != 200:
+        raise SystemExit(f"{ne} okunamadı ({yanit.status_code}): {_mesaj(yanit) or 'API hata döndü.'}")
+    return yanit.json()
+
+
 def eksik_dosyalar(gorseller: Path, yollar: list[str]) -> list[str]:
     return [yol for yol in dict.fromkeys(yollar) if not (gorseller / yol).is_file()]
 
@@ -54,7 +61,7 @@ def meme_haritasi(istek: Istek) -> dict[str, dict]:
     """sha256 -> meme; bütün sayfalar okunur."""
     harita, sayfa = {}, 1
     while True:
-        veri = istek("GET", "/memes", params={"sayfa": sayfa, "boyut": 200}).json()
+        veri = _okunan(istek("GET", "/memes", params={"sayfa": sayfa, "boyut": 200}), "Meme listesi")
         harita.update({meme["sha256"]: meme for meme in veri["ogeler"]})
         if sayfa * veri["boyut"] >= veri["toplam"]:
             return harita
@@ -79,13 +86,13 @@ def isaretle(istek: Istek, gorseller: Path, yollar: list[str], harita: dict[str,
 
 
 def sorgulari_ekle(istek: Istek, gorseller: Path, veri: dict, harita: dict[str, dict]) -> dict:
-    kisiler = {kisi["kullanici_adi"]: kisi["id"] for kisi in istek("GET", "/users").json()}
+    kisiler = {kisi["kullanici_adi"]: kisi["id"] for kisi in _okunan(istek("GET", "/users"), "Kullanıcı listesi")}
     if veri["yazan"] not in kisiler:
         raise SystemExit(f"'{veri['yazan']}' adında bir kullanıcı yok.")
     yazan_id = kisiler[veri["yazan"]]
     mevcut = {
         (sorgu["metin"], tuple(sorgu["dogru_memeler"]))
-        for sorgu in istek("GET", "/test-queries", params={"yazan_id": yazan_id}).json()
+        for sorgu in _okunan(istek("GET", "/test-queries", params={"yazan_id": yazan_id}), "Test sorguları")
     }
     sonuc = {"eklenen": 0, "atlanan": 0, "bulunamayan": [], "basarisiz": []}
     for sorgu in veri["sorgular"]:
