@@ -126,6 +126,11 @@ class MemeOut(BaseModel):
     acik_yorum_sayisi: int
     vlm_taslak: Optional[str] = None
     ai_taslagi_var: bool = False
+    test_seti: bool = False
+
+
+class MemeUpdateIn(BaseModel):
+    test_seti: Optional[bool] = None
 
 
 class AnnotationSummaryOut(BaseModel):
@@ -484,6 +489,8 @@ class TestQueryCreateIn(BaseModel):
     metin: SorguMetni
     mod: SorguModu
     dogru_memeler: list[str] = Field(min_length=1)
+    # Yalnızca admin başka bir kullanıcı adına sorgu ekleyebilir; sızıntı kuralı o kişiye uygulanır.
+    yazan_id: Optional[str] = None
 
 
 class TestQueryUpdateIn(BaseModel):

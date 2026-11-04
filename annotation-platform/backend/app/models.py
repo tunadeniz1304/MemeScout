@@ -46,6 +46,9 @@ class Meme(SQLModel, table=True):
     # Görselin yorumsuz tarifi (VLM ya da AI taslağından); bir kez dolar, sonra değişmez.
     # Canlıdaki tabloya sonradan eklendi: ALTER TABLE meme ADD COLUMN vlm_taslak VARCHAR
     vlm_taslak: Optional[str] = None
+    # Test setindeki meme ekibin etiketleme atamalarına girmez; herkes ona test sorgusu yazar (ADR-0012).
+    # Canlıdaki tabloya sonradan eklendi: ALTER TABLE meme ADD COLUMN test_seti BOOLEAN NOT NULL DEFAULT false
+    test_seti: bool = False
 
 class MemeImage(SQLModel, table=True):
     # Görsel ayrı tabloda tutulur; meme listesi sorguları baytları taşımaz.

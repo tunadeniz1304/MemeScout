@@ -250,6 +250,10 @@ paths:
         - name: cift_etiket
           in: query
           schema: { type: boolean }
+        - name: test_seti
+          in: query
+          description: Yalnızca test setindeki (true) ya da test seti dışındaki (false) meme'ler
+          schema: { type: boolean }
         - name: q
           in: query
           description: Meme id veya gold kayıttaki `ad` içinde arama
@@ -374,6 +378,27 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/MemeDetail' }
         '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [memes]
+      summary: Meme'i test setine al ya da çıkar (admin)
+      description: |
+        Test setindeki meme ekibin etiketleme atamalarına girmez; herkes ona test sorgusu yazabilir
+        (ADR-0012). Annotation'ı ya da gold kaydı olan meme test setine alınamaz
+        (`hata.kod = GECERSIZ_DURUM_GECISI`). Test setinden çıkarılan meme yeniden atanabilir hâle gelir.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MemeUpdate' }
+      responses:
+        '200':
+          description: Güncellenen meme
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Meme' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   /memes/{meme_id}/image:
     parameters:
@@ -574,8 +599,10 @@ paths:
         '409':
           description: |
             Bu meme bu kişiye zaten atanmış (`hata.kod = ZATEN_ATANMIS`), AI taslağı olan meme
-            kalibrasyona veya çift etiketlemeye alınmak istendi (`hata.kod = AI_TASLAKLI_MEME`)
-            ya da meme çıkarılmış (`hata.kod = MEME_CIKARILDI`)
+            kalibrasyona veya çift etiketlemeye alınmak istendi (`hata.kod = AI_TASLAKLI_MEME`),
+            meme çıkarılmış (`hata.kod = MEME_CIKARILDI`), test setinde (`hata.kod = TEST_SETI`)
+            ya da annotator bu meme'e test sorgusu yazmış (`hata.kod = SIZINTI`,
+            `hata.detay.ihlal_eden_memeler`; ADR-0012)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -587,6 +614,8 @@ paths:
       description: |
         Atanmamış meme'leri annotator'lara eşit böler ve `cift_etiket_orani` kadarını ikinci bir kişiye de atar.
         İkinci atamalar tüm ikililere (4 kişide 6 ikili) dengeli dağıtılır.
+        Test setindeki meme'ler dağıtıma girmez. Bir meme, ona test sorgusu yazmış kişiye atanmaz
+        (ADR-0012); uygun ikilisi olmayan meme tek etiketli kalır, uygun kimsesi olmayan meme atanmaz.
         `dry_run: true` ile sadece plan döner, kayıt oluşturulmaz.
       requestBody:
         required: true
@@ -610,6 +639,7 @@ paths:
       description: |
         Atlanan veya tanıdıklığı düşük annotation için meme'i başka birine atar.
         Eski annotation `atlandi` olarak kalır, yeni kişi için yeni annotation oluşur.
+        Meme'e test sorgusu yazmış kişiye atanamaz (`hata.kod = SIZINTI`; ADR-0012).
       requestBody:
         required: true
         content:
@@ -842,8 +872,8 @@ paths:
       description: |
         Annotation'larının hepsi gönderilmiş, gold kaydı olmayan meme'ler: çift etiketli meme'de
         anlaşmazlık çözümü, tek etiketli meme'de ikinci bakış (ADR-0009).
-        Yalnızca giriş yapan kullanıcının reviewer olabileceği (annotator'ı olmadığı) meme'ler döner.
-        Çıkarılan meme'ler kuyrukta görünmez.
+        Yalnızca giriş yapan kullanıcının reviewer olabileceği (annotator'ı olmadığı ve test sorgusu
+        yazmadığı) meme'ler döner. Çıkarılan meme'ler kuyrukta görünmez.
       responses:
         '200':
           description: OK
@@ -862,7 +892,8 @@ paths:
       description: |
         Çift etiketli meme'de iki annotation yan yana ve alan bazında karşılaştırma; tek etiketli
         meme'de tek annotation ve boş karşılaştırma. Meme'in annotator'ı 403
-        `REVIEWER_ANNOTATOR_OLAMAZ` alır; annotation'lar henüz gönderilmediyse 409 döner.
+        `REVIEWER_ANNOTATOR_OLAMAZ`, meme'e test sorgusu yazmış kişi 403 `SIZINTI` alır (ADR-0012);
+        annotation'lar henüz gönderilmediyse 409 döner.
       responses:
         '200':
           description: Annotation'lar ve alan bazında karşılaştırma
@@ -895,7 +926,9 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/GoldRecord' }
         '403':
-          description: Kullanıcı bu meme'in annotator'ı (`hata.kod = REVIEWER_ANNOTATOR_OLAMAZ`)
+          description: |
+            Kullanıcı bu meme'in annotator'ı (`hata.kod = REVIEWER_ANNOTATOR_OLAMAZ`) ya da bu meme'e
+            test sorgusu yazmış (`hata.kod = SIZINTI`; ADR-0012)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -928,7 +961,10 @@ paths:
     post:
       tags: [test-queries]
       summary: Test sorgusu ekle
-      description: Çıkarılmış meme doğru cevap olarak verilemez (`hata.alanlar[].kural = gecersiz_deger`).
+      description: |
+        Çıkarılmış meme doğru cevap olarak verilemez (`hata.alanlar[].kural = gecersiz_deger`).
+        Admin `yazan_id` ile başka bir kullanıcı adına sorgu ekleyebilir. Sorguyu yazan kişi, doğru
+        cevap meme'lerine annotator ya da reviewer olarak atanamaz (ADR-0012).
       requestBody:
         required: true
         content:
@@ -1205,7 +1241,7 @@ components:
                 Makine tarafından okunabilir hata kodu. Örnekler: YETKISIZ, YASAK, KOR_ETIKETLEME,
                 BULUNAMADI, KOPYA, ZATEN_ATANMIS, GECERSIZ_DURUM_GECISI, SURUM_CAKISMASI, CAKISMA,
                 DOGRULAMA, TANIDIKLIK_DUSUK, SIZINTI, REVIEWER_ANNOTATOR_OLAMAZ, KAYIT_KAPALI,
-                DESTEKLENMEYEN_TUR, BOZUK_DOSYA, AI_TASLAKLI_MEME, MEME_CIKARILDI, HAVUZDA_DEGIL
+                DESTEKLENMEYEN_TUR, BOZUK_DOSYA, AI_TASLAKLI_MEME, MEME_CIKARILDI, HAVUZDA_DEGIL, TEST_SETI
               example: DOGRULAMA
             mesaj:
               type: string
@@ -1492,6 +1528,14 @@ components:
         ai_taslagi_var:
           type: boolean
           description: Meme'e bağlı bir AI taslağı var (ADR-0010); meme tek etiketli kalır
+        test_seti:
+          type: boolean
+          description: Meme test setinde; etiketleme atamalarına girmez, herkes test sorgusu yazar (ADR-0012)
+
+    MemeUpdate:
+      type: object
+      properties:
+        test_seti: { type: boolean }
 
     MemeDetail:
       allOf:
@@ -2170,6 +2214,11 @@ components:
           type: array
           minItems: 1
           items: { type: string }
+        yazan_id:
+          type: string
+          description: |
+            Yalnızca admin: sorgu bu kullanıcı adına eklenir ve sızıntı kuralı ona uygulanır
+            (ör. bir belgede toplanmış sorgular). Admin olmayan biri başkası adına ekleyemez (403 `YASAK`).
 
     TestQueryUpdate:
       type: object

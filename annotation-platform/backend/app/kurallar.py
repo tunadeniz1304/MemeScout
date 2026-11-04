@@ -23,6 +23,7 @@ from app.models import (
     Annotation,
     Comment,
     GoldRecord,
+    TestQuery,
     User,
 )
 from app.yeniden_kontrol import yeniden_kontrol_listesi
@@ -252,3 +253,16 @@ def gold_katkicilari(session: Session, meme_id: str) -> set[str]:
     kaynaklar = set(gold.kaynak_annotationlar)
     sahipler = session.exec(select(Annotation.annotator_id).where(Annotation.id.in_(kaynaklar))).all() if kaynaklar else []
     return set(sahipler) | ({gold.reviewer_id} if gold.reviewer_id else set())
+
+
+def test_sorgusu_yazarlari(session: Session, meme_idleri: Iterable[str]) -> dict[str, set[str]]:
+    """Sızıntı kuralının ters yönü (ADR-0012): bir meme'e test sorgusu yazan kişiler.
+
+    Bu kişiler meme'in annotator'ı ya da reviewer'ı olamaz; yoksa örnek durumlara kendi test
+    sorgularını yazabilirler ve sonuçlar olduğundan iyi görünür.
+    """
+    yazarlar: dict[str, set[str]] = {meme_id: set() for meme_id in meme_idleri}
+    for sorgu in session.exec(select(TestQuery)).all():
+        for meme_id in set(sorgu.dogru_memeler) & yazarlar.keys():
+            yazarlar[meme_id].add(sorgu.yazan_id)
+    return yazarlar

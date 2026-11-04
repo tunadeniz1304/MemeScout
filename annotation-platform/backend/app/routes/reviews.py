@@ -15,6 +15,7 @@ from app.kurallar import (
     incelemeye_hazir_mi,
     meme_annotationlari,
     reviewer_olabilir_mi,
+    test_sorgusu_yazarlari,
 )
 from app.models import GONDERILDI, ONAYLANDI, REVIZYON_GEREKLI, Annotation, GoldRecord, User
 from app.routes.annotations import annotation_getir, durumda_olmali, durumu_degistir, kaydet_ve_don
@@ -26,9 +27,11 @@ from app.sema import ALAN_KURALLARI, SEMA_VERSIYONU, icerik_dogrula
 router = APIRouter(prefix="/api/v1", tags=["reviews"])
 
 
-def reviewer_olmali(kullanici: User, meme_annotationlari: list) -> None:
+def reviewer_olmali(session: Session, kullanici: User, meme_id: str, meme_annotationlari: list) -> None:
     if not reviewer_olabilir_mi(kullanici.id, meme_annotationlari):
         raise ApiHatasi(403, "REVIEWER_ANNOTATOR_OLAMAZ", "Bu meme'i etiketleyen kişi reviewer olamaz.")
+    if kullanici.id in test_sorgusu_yazarlari(session, [meme_id])[meme_id]:
+        raise ApiHatasi(403, "SIZINTI", "Bu meme'e test sorgusu yazan kişi onun reviewer'ı olamaz.")
 
 
 def inceleme_annotationlari(session: Session, meme_id: str) -> list[Annotation]:
@@ -58,11 +61,12 @@ def inceleme_kuyrugu(
     kullanici: User = Depends(aktif_kullanici),
 ):
     baglam = MemeBaglami(session)
+    yazarlar = test_sorgusu_yazarlari(session, baglam.annotationlar)
     kuyruk = []
     for meme_id, annotationlar in baglam.annotationlar.items():
         if baglam.gold_var(meme_id) or meme_id in baglam.cikarilanlar or not incelemeye_hazir_mi(annotationlar):
             continue
-        if not reviewer_olabilir_mi(kullanici.id, annotationlar):
+        if not reviewer_olabilir_mi(kullanici.id, annotationlar) or kullanici.id in yazarlar[meme_id]:
             continue
         gonderilenler = grubu(annotationlar, False)
         kuyruk.append({
@@ -85,7 +89,7 @@ def inceleme_detayi(
     meme = meme_getir(session, meme_id)
     cikarilmamis_olmali(session, meme_id)
     tum_annotationlar = meme_annotationlari(session, meme_id)
-    reviewer_olmali(kullanici, tum_annotationlar)
+    reviewer_olmali(session, kullanici, meme_id, tum_annotationlar)
     gold_var = session.get(GoldRecord, meme_id) is not None
     if not gold_var and not incelemeye_hazir_mi(tum_annotationlar):
         raise ApiHatasi(409, "GECERSIZ_DURUM_GECISI", "Bu meme'in annotation'ları henüz gönderilmedi.")
@@ -110,7 +114,7 @@ def gold_onayla(
     meme_getir(session, meme_id)
     cikarilmamis_olmali(session, meme_id)
     tum_annotationlar = meme_annotationlari(session, meme_id)
-    reviewer_olmali(kullanici, tum_annotationlar)
+    reviewer_olmali(session, kullanici, meme_id, tum_annotationlar)
     if session.get(GoldRecord, meme_id) is not None:
         raise ApiHatasi(409, "GECERSIZ_DURUM_GECISI", "Bu meme'in gold kaydı zaten var.")
     if not incelemeye_hazir_mi(tum_annotationlar):
@@ -167,7 +171,7 @@ def revizyon_iste(
     annotation = annotation_getir(session, annotation_id, kilitle=True)
     cikarilmamis_olmali(session, annotation.meme_id)
     tum_annotationlar = meme_annotationlari(session, annotation.meme_id)
-    reviewer_olmali(kullanici, tum_annotationlar)
+    reviewer_olmali(session, kullanici, annotation.meme_id, tum_annotationlar)
     if annotation.kalibrasyon:
         raise ApiHatasi(409, "GECERSIZ_DURUM_GECISI", "Kalibrasyon annotation'ları incelemeye girmez.")
     durumda_olmali(annotation, (GONDERILDI,), "revizyon isteği")
